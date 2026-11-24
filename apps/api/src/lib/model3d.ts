@@ -23,13 +23,22 @@ export interface ModelCredit {
 
 export type Model3D =
   | { kind: "glb"; url: string; credit: ModelCredit | null }
-  | { kind: "sketchfab"; uid: string; credit: ModelCredit; bodyType: BodyType; thumbnailUrl: string | null }
+  | {
+      kind: "sketchfab";
+      uid: string;
+      credit: ModelCredit;
+      bodyType: BodyType;
+      thumbnailUrl: string | null;
+      /** false: closest model of the same generation, another version. */
+      exact: boolean;
+    }
   | { kind: "procedural"; bodyType: BodyType; searching: boolean };
 
 /** Row of the CarModel3D table, as needed here. */
 export interface CatalogRow {
   status: "SEARCHING" | "FOUND" | "NOT_FOUND";
   sketchfabUid: string | null;
+  exactMatch: boolean;
   title: string | null;
   author: string | null;
   license: string | null;
@@ -117,6 +126,7 @@ export function resolveModel3D(spec: Spec3D, row?: CatalogRow | null): Model3D {
       uid: row.sketchfabUid,
       bodyType,
       thumbnailUrl: row.thumbnailUrl,
+      exact: row.exactMatch,
       credit: {
         title: row.title ?? "Modèle 3D",
         author: row.author ?? "inconnu",

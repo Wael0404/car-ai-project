@@ -49,7 +49,15 @@ export interface ModelCredit {
 
 export type Model3D =
   | { kind: "glb"; url: string; credit: ModelCredit | null }
-  | { kind: "sketchfab"; uid: string; credit: ModelCredit; bodyType: BodyType; thumbnailUrl: string | null }
+  | {
+      kind: "sketchfab";
+      uid: string;
+      credit: ModelCredit;
+      bodyType: BodyType;
+      thumbnailUrl: string | null;
+      /** false: closest model of the same generation, another version. */
+      exact: boolean;
+    }
   | { kind: "procedural"; bodyType: BodyType; searching?: boolean };
 
 /** What the owner reads on the registration card (carte grise). */

@@ -15,8 +15,10 @@ export async function ensureModel3D(profile: VehicleProfile, log: Logger): Promi
   const key = modelKey(profile.make, profile.model, profile.generation, variant);
   const row = await prisma.carModel3D.findUnique({ where: { key } });
 
-  const stale = row?.status === "NOT_FOUND" && Date.now() - row.updatedAt.getTime() > RETRY_NOT_FOUND_MS;
-  if (row && !stale) return; // already found, searching, or recently not found
+  // Not found, or only a "closest" model: look again later, an exact one may appear.
+  const retryable = row?.status === "NOT_FOUND" || (row?.status === "FOUND" && !row.exactMatch);
+  const stale = retryable && Date.now() - row!.updatedAt.getTime() > RETRY_NOT_FOUND_MS;
+  if (row && !stale) return; // already found, searching, or recently checked
 
   await prisma.carModel3D.upsert({
     where: { key },
@@ -39,13 +41,14 @@ export async function ensureModel3D(profile: VehicleProfile, log: Logger): Promi
 export async function runModel3DSearch(data: Model3DJobData, finalAttempt: boolean, log: Logger): Promise<void> {
   await prisma.carModel3D.update({ where: { key: data.key }, data: { attempts: { increment: 1 } } });
   try {
-    const { candidate, reason } = await findCarModel(data);
+    const { candidate, exact, reason } = await findCarModel(data);
     await prisma.carModel3D.update({
       where: { key: data.key },
       data: candidate
         ? {
             status: "FOUND",
             sketchfabUid: candidate.uid,
+            exactMatch: exact,
             title: candidate.name.slice(0, 200),
             author: candidate.author,
             license: candidate.license,
@@ -55,7 +58,7 @@ export async function runModel3DSearch(data: Model3DJobData, finalAttempt: boole
           }
         : { status: "NOT_FOUND", sketchfabUid: null, reason },
     });
-    log.info({ key: data.key, found: Boolean(candidate), uid: candidate?.uid }, "3D model search done");
+    log.info({ key: data.key, found: Boolean(candidate), exact, uid: candidate?.uid }, "3D model search done");
   } catch (err) {
     if (finalAttempt) {
       await prisma.carModel3D.update({

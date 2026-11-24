@@ -130,6 +130,12 @@ function Dashboard({ id }: { id: string }) {
           {v.model3d.kind === "sketchfab" ? ", fourni par Sketchfab" : ""}
         </Text>
       )}
+      {v.model3d?.kind === "sketchfab" && !v.model3d.exact && (
+        <Text style={{ color: t.warning, fontSize: 13 }}>
+          Modèle 3D le plus proche disponible : « {v.model3d.credit.title} ». Aucun modèle 3D gratuit de votre version
+          exacte n'existe pour l'instant ; nous le remplacerons automatiquement dès qu'il en apparaîtra un.
+        </Text>
+      )}
       <ColorPicker value={v.color} onChange={(color) => update.mutate({ color })} />
       {v.model3d?.kind === "procedural" && (
         <Body muted style={{ fontSize: 12 }}>

@@ -67,6 +67,9 @@ model CarModel3D {
   key          String        @id @db.VarChar(200)
   status       Model3DStatus @default(SEARCHING)
   sketchfabUid String?       @db.VarChar(40)
+  /// false: no model of this exact version exists, this is the closest one
+  /// of the same generation (e.g. a Panda City Life for a standard Panda).
+  exactMatch   Boolean       @default(true)
   title        String?
   author       String?
   license      String?
