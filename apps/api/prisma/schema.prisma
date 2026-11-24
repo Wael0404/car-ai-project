@@ -54,6 +54,33 @@ model Vehicle {
   @@index([userId])
 }
 
+enum Model3DStatus {
+  SEARCHING
+  FOUND
+  NOT_FOUND
+}
+
+/// 3D model chosen by the AI agent for one make + model + generation,
+/// shared by every owner of that car. Shown with the Sketchfab viewer.
+model CarModel3D {
+  /// "make|model|generation" in lower case (see src/lib/model3d.ts).
+  key          String        @id @db.VarChar(200)
+  status       Model3DStatus @default(SEARCHING)
+  sketchfabUid String?       @db.VarChar(40)
+  title        String?
+  author       String?
+  license      String?
+  viewerUrl    String?
+  thumbnailUrl String?
+  /// Why the agent picked this model, or why none matched.
+  reason       String?
+  attempts     Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([status])
+}
+
 enum SpecStatus {
   PENDING
   READY

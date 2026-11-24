@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../lib/db.js";
-import { resolveModel3D } from "../lib/model3d.js";
+import { modelKey, resolveModel3D, type CatalogRow } from "../lib/model3d.js";
 import { enqueueVinResearch } from "../lib/queue.js";
 import { validateVin } from "../lib/vin.js";
 import type { Prisma } from "../generated/prisma/client.js";
@@ -38,7 +38,23 @@ const IdParams = z.object({ id: z.uuid() });
 type VehicleWithSpec = Prisma.VehicleGetPayload<{ include: { spec: true } }>;
 
 /** Public shape of a vehicle, as the mobile app receives it. */
-function toDto(v: VehicleWithSpec) {
+type Profile = { make?: string | null; model?: string | null; generation?: string | null } | null;
+
+function catalogKey(v: VehicleWithSpec): string | null {
+  const p = v.spec.data as Profile;
+  return p?.make && p.model ? modelKey(p.make, p.model, p.generation ?? null) : null;
+}
+
+/** Loads the 3D catalog rows of these vehicles in one query. */
+async function loadCatalog(vehicles: VehicleWithSpec[]): Promise<Map<string, CatalogRow>> {
+  const keys = [...new Set(vehicles.map(catalogKey).filter((k): k is string => k !== null))];
+  if (keys.length === 0) return new Map();
+  const rows = await prisma.carModel3D.findMany({ where: { key: { in: keys } } });
+  return new Map(rows.map((r) => [r.key, r]));
+}
+
+function toDto(v: VehicleWithSpec, catalog: Map<string, CatalogRow>) {
+  const key = catalogKey(v);
   const spec = v.spec;
   return {
     id: v.id,
@@ -60,9 +76,9 @@ function toDto(v: VehicleWithSpec) {
             make: spec.make,
             model: spec.model,
             modelYear: spec.modelYear,
-            generation: (spec.data as { generation?: string | null } | null)?.generation ?? null,
+            generation: (spec.data as Profile)?.generation ?? null,
             bodyType: spec.bodyType,
-          })
+          }, key ? catalog.get(key) : null)
         : null,
   };
 }
@@ -76,7 +92,8 @@ export async function vehicleRoutes(app: FastifyInstance) {
       include: { spec: true },
       orderBy: { createdAt: "asc" },
     });
-    return vehicles.map(toDto);
+    const catalog = await loadCatalog(vehicles);
+    return vehicles.map((v) => toDto(v, catalog));
   });
 
   app.get("/vehicles/:id", async (req, reply) => {
@@ -86,7 +103,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
       include: { spec: true },
     });
     if (!vehicle) return reply.code(404).send({ error: "Véhicule introuvable." });
-    return toDto(vehicle);
+    return toDto(vehicle, await loadCatalog([vehicle]));
   });
 
   /** Adds a car. The AI research runs in the background; poll GET /vehicles/:id. */
@@ -131,7 +148,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
         },
         include: { spec: true },
       });
-      return reply.code(201).send(toDto(vehicle));
+      return reply.code(201).send(toDto(vehicle, await loadCatalog([vehicle])));
     } catch (err) {
       if ((err as { code?: string }).code === "P2002") {
         return reply.code(409).send({ error: "Cette voiture est déjà dans votre compte." });
@@ -146,7 +163,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
     const { count } = await prisma.vehicle.updateMany({ where: { id, userId: req.user.sub }, data: body });
     if (count === 0) return reply.code(404).send({ error: "Véhicule introuvable." });
     const vehicle = await prisma.vehicle.findUniqueOrThrow({ where: { id }, include: { spec: true } });
-    return toDto(vehicle);
+    return toDto(vehicle, await loadCatalog([vehicle]));
   });
 
   /**

@@ -7,7 +7,9 @@ const POLL_MS = 4000;
 /** Re-fetch every few seconds while the AI agent is still researching. */
 const pollWhilePending = (vehicles: Vehicle[] | Vehicle | undefined) => {
   const list = Array.isArray(vehicles) ? vehicles : vehicles ? [vehicles] : [];
-  return list.some((v) => v.status === "PENDING") ? POLL_MS : false;
+  const busy = (v: Vehicle) =>
+    v.status === "PENDING" || (v.model3d?.kind === "procedural" && v.model3d.searching === true);
+  return list.some(busy) ? POLL_MS : false;
 };
 
 export function useVehicles() {

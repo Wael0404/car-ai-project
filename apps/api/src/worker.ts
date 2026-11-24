@@ -5,10 +5,12 @@
  */
 import { Worker } from "bullmq";
 import pino from "pino";
+import type { VehicleProfile } from "./agent/schema.js";
 import { AgentRefusalError, researchVehicle } from "./agent/vinAgent.js";
 import { config } from "./config.js";
 import { prisma } from "./lib/db.js";
-import { VIN_QUEUE, type VinJobData } from "./lib/queue.js";
+import { MODEL3D_QUEUE, VIN_QUEUE, type Model3DJobData, type VinJobData } from "./lib/queue.js";
+import { ensureModel3D, runModel3DSearch } from "./model3dJobs.js";
 import { createQueueConnection } from "./lib/redis.js";
 
 const log = pino({ name: "vin-worker" });
@@ -38,6 +40,7 @@ const worker = new Worker<VinJobData>(
         },
       });
       log.info({ vin, make: profile.make, model: profile.model }, "VIN researched");
+      await ensureModel3D(profile, log);
     } catch (err) {
       const finalAttempt = err instanceof AgentRefusalError || job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
       if (finalAttempt) {
@@ -55,13 +58,31 @@ const worker = new Worker<VinJobData>(
 
 worker.on("failed", (job, err) => log.error({ vin: job?.data.vin, err: err.message }, "Job failed"));
 
+/** Second queue: the 3D model agent (one search per make/model/generation). */
+const model3dWorker = new Worker<Model3DJobData>(
+  MODEL3D_QUEUE,
+  async (job) => {
+    const finalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+    log.info({ key: job.data.key }, "Searching 3D model");
+    await runModel3DSearch(job.data, finalAttempt, log);
+  },
+  { connection: createQueueConnection(), concurrency: 2 },
+);
+model3dWorker.on("failed", (job, err) => log.error({ key: job?.data.key, err: err.message }, "3D model job failed"));
+
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, async () => {
     log.info("Stopping worker (waiting for running jobs)");
-    await worker.close();
+    await Promise.all([worker.close(), model3dWorker.close()]);
     await prisma.$disconnect();
     process.exit(0);
   });
 }
 
 log.info({ concurrency: config.AGENT_CONCURRENCY }, "VIN worker started");
+
+// Cars researched before the 3D agent existed: queue their 3D model search.
+const ready = await prisma.vehicleSpec.findMany({ where: { status: "READY" }, select: { data: true } });
+for (const spec of ready) {
+  if (spec.data) await ensureModel3D(spec.data as unknown as VehicleProfile, log).catch(() => {});
+}

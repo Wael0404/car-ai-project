@@ -1,8 +1,9 @@
 import { Canvas, useFrame, useLoader } from "@react-three/fiber/native";
-import { Component, Suspense, useMemo, useRef, type MutableRefObject, type ReactNode } from "react";
+import { Component, Suspense, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { PanResponder, StyleSheet, View } from "react-native";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { SketchfabViewer } from "@/components/SketchfabViewer";
 import type { BodyType, Model3D } from "@/lib/types";
 
 /**
@@ -188,7 +189,18 @@ function Turntable({
   return <group ref={group}>{children}</group>;
 }
 
+/** Picks the best available view: Sketchfab model, own GLB, or generic car. */
 export function Car3D({ model3d, color, height = 280 }: { model3d: Model3D | null; color: string; height?: number }) {
+  const [viewerFailed, setViewerFailed] = useState(false);
+  if (model3d?.kind === "sketchfab" && !viewerFailed) {
+    return <SketchfabViewer uid={model3d.uid} color={color} height={height} onError={() => setViewerFailed(true)} />;
+  }
+  const fallback: Model3D | null =
+    model3d?.kind === "sketchfab" ? { kind: "procedural", bodyType: model3d.bodyType } : model3d;
+  return <Car3DCanvas model3d={fallback} color={color} height={height} />;
+}
+
+function Car3DCanvas({ model3d, color, height }: { model3d: Model3D | null; color: string; height: number }) {
   const yaw = useRef(-0.6);
   const startYaw = useRef(0);
   const dragging = useRef(false);
@@ -214,7 +226,8 @@ export function Car3D({ model3d, color, height = 280 }: { model3d: Model3D | nul
     [],
   );
 
-  const model = model3d ?? { kind: "procedural" as const, bodyType: "sedan" as const };
+  const model: Model3D =
+    model3d && model3d.kind !== "sketchfab" ? model3d : { kind: "procedural", bodyType: model3d?.bodyType ?? "sedan" };
 
   return (
     <View style={[styles.container, { height }]} {...pan.panHandlers}>

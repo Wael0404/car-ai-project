@@ -23,7 +23,27 @@ export interface ModelCredit {
 
 export type Model3D =
   | { kind: "glb"; url: string; credit: ModelCredit | null }
-  | { kind: "procedural"; bodyType: BodyType };
+  | { kind: "sketchfab"; uid: string; credit: ModelCredit; bodyType: BodyType }
+  | { kind: "procedural"; bodyType: BodyType; searching: boolean };
+
+/** Row of the CarModel3D table, as needed here. */
+export interface CatalogRow {
+  status: "SEARCHING" | "FOUND" | "NOT_FOUND";
+  sketchfabUid: string | null;
+  title: string | null;
+  author: string | null;
+  license: string | null;
+  viewerUrl: string | null;
+}
+
+/**
+ * Key shared by every owner of the same car: "make|model|generation".
+ * The generation text comes from the VIN agent, e.g. "Panda III (312/319)".
+ */
+export function modelKey(make: string, model: string, generation: string | null): string {
+  const clean = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+  return [clean(make), clean(model), generation ? clean(generation) : ""].join("|").slice(0, 200);
+}
 
 export const MODELS_DIR = fileURLToPath(new URL("../../models/", import.meta.url));
 const CDN_BASE = (process.env["MODELS_CDN_URL"] ?? "").replace(/\/$/, "");
@@ -68,7 +88,7 @@ function matches(entry: CatalogEntry, spec: Spec3D): boolean {
   return Boolean(spec.generation || spec.modelYear || (!entry.generation && !entry.years));
 }
 
-interface Spec3D {
+export interface Spec3D {
   make: string | null;
   model: string | null;
   modelYear: number | null;
@@ -76,7 +96,8 @@ interface Spec3D {
   bodyType: string | null;
 }
 
-export function resolveModel3D(spec: Spec3D): Model3D {
+export function resolveModel3D(spec: Spec3D, row?: CatalogRow | null): Model3D {
+  const bodyType = (spec.bodyType as BodyType | null) ?? "sedan";
   if (spec.make && spec.model && CDN_BASE) {
     const entry = CATALOG.find((e) => matches(e, spec));
     // Locally, only offer a model whose file is really there.
@@ -85,5 +106,19 @@ export function resolveModel3D(spec: Spec3D): Model3D {
       return { kind: "glb", url: `${CDN_BASE}/${entry.file}`, credit: entry.credit };
     }
   }
-  return { kind: "procedural", bodyType: (spec.bodyType as BodyType | null) ?? "sedan" };
+  // Model found and validated by the AI agent, shown with the Sketchfab viewer.
+  if (row?.status === "FOUND" && row.sketchfabUid) {
+    return {
+      kind: "sketchfab",
+      uid: row.sketchfabUid,
+      bodyType,
+      credit: {
+        title: row.title ?? "Modèle 3D",
+        author: row.author ?? "inconnu",
+        license: row.license ?? "Sketchfab",
+        url: row.viewerUrl ?? `https://sketchfab.com/3d-models/${row.sketchfabUid}`,
+      },
+    };
+  }
+  return { kind: "procedural", bodyType, searching: row?.status === "SEARCHING" };
 }

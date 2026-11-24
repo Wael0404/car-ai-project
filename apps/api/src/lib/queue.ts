@@ -40,3 +40,34 @@ export async function enqueueVinResearch(vin: string, hints?: OwnerHints): Promi
   }
   await vinQueue.add("research", { vin, hints }, { jobId });
 }
+
+// --- 3D model search (one job per make + model + generation) ---
+
+export const MODEL3D_QUEUE = "model3d-search";
+
+export interface Model3DJobData {
+  key: string;
+  make: string;
+  model: string;
+  generation: string | null;
+  modelYear: number | null;
+  bodyType: string | null;
+}
+
+export const model3dQueue = new Queue<Model3DJobData>(MODEL3D_QUEUE, {
+  connection: createQueueConnection(),
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 60_000 },
+    removeOnComplete: { age: 24 * 3600, count: 10_000 },
+    removeOnFail: { age: 7 * 24 * 3600 },
+  },
+});
+
+export async function enqueueModel3DSearch(data: Model3DJobData): Promise<void> {
+  // BullMQ job ids cannot contain ":"; the key is hashed into a safe id.
+  const jobId = `m3d-${Buffer.from(data.key).toString("base64url").slice(0, 180)}`;
+  const previous = await model3dQueue.getJob(jobId);
+  if (previous && ((await previous.isFailed()) || (await previous.isCompleted()))) await previous.remove();
+  await model3dQueue.add("search", data, { jobId });
+}

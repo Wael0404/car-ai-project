@@ -101,6 +101,7 @@ function Dashboard({ id }: { id: string }) {
     return <ActivityIndicator style={{ marginTop: 40 }} />;
   }
 
+  const credit = v.model3d?.kind === "glb" || v.model3d?.kind === "sketchfab" ? v.model3d.credit : null;
   const title = v.nickname ?? ([v.profile?.make, v.profile?.model].filter(Boolean).join(" ") || "Ma voiture");
 
   function confirmDelete() {
@@ -121,19 +122,19 @@ function Dashboard({ id }: { id: string }) {
       <Card style={{ padding: 0, overflow: "hidden" }}>
         <Car3D model3d={v.model3d} color={v.color} />
       </Card>
-      {v.model3d?.kind === "glb" && v.model3d.credit && (
-        <Text
-          style={{ color: t.muted, fontSize: 11 }}
-          onPress={() => v.model3d?.kind === "glb" && v.model3d.credit && Linking.openURL(v.model3d.credit.url)}
-        >
-          Modèle 3D « {v.model3d.credit.title} » par {v.model3d.credit.author} ({v.model3d.credit.license})
+      {(v.model3d?.kind === "glb" || v.model3d?.kind === "sketchfab") && v.model3d.credit && (
+        <Text style={{ color: t.muted, fontSize: 11 }} onPress={() => credit && Linking.openURL(credit.url)}>
+          Modèle 3D « {v.model3d.credit.title} » par {v.model3d.credit.author}
+          {v.model3d.credit.license ? ` (${v.model3d.credit.license})` : ""}
+          {v.model3d.kind === "sketchfab" ? ", fourni par Sketchfab" : ""}
         </Text>
       )}
       <ColorPicker value={v.color} onChange={(color) => update.mutate({ color })} />
       {v.model3d?.kind === "procedural" && (
         <Body muted style={{ fontSize: 12 }}>
-          Modèle 3D générique de type « {v.model3d.bodyType} ». Le modèle exact de votre voiture sera affiché dès qu'il
-          sera disponible dans notre catalogue.
+          {v.model3d.searching
+            ? "L'agent IA recherche le modèle 3D de votre voiture…"
+            : `Modèle 3D générique de type « ${v.model3d.bodyType} » : aucun modèle 3D gratuit fidèle à votre voiture n'a été trouvé pour l'instant.`}
         </Body>
       )}
 
