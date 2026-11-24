@@ -1,12 +1,14 @@
 import { router, Stack, useLocalSearchParams } from "expo-router";
+import { useState } from "react";
 import { ActivityIndicator, Alert, Linking, ScrollView, Text, View } from "react-native";
 import { Car3D } from "@/components/Car3D";
 import { ColorPicker } from "@/components/ColorPicker";
+import { cleanHints, OwnerHintsFields } from "@/components/OwnerHintsFields";
 import { RequireAuth } from "@/components/RequireAuth";
 import { Body, Button, Card, Row } from "@/components/ui";
 import { useTheme } from "@/lib/theme";
-import type { Vehicle } from "@/lib/types";
-import { useDeleteVehicle, useRetryVehicle, useUpdateVehicle, useVehicle } from "@/lib/vehicles";
+import type { OwnerHints, Vehicle } from "@/lib/types";
+import { useDeleteVehicle, useResearchAgain, useUpdateVehicle, useVehicle } from "@/lib/vehicles";
 
 const CONFIDENCE = { high: "Élevée", medium: "Moyenne", low: "Faible" } as const;
 
@@ -14,8 +16,15 @@ function Specs({ v }: { v: Vehicle }) {
   const t = useTheme();
   const p = v.profile!;
   const e = p.engine;
+  const check = p.ownerDataCheck;
   return (
     <>
+      {check?.status === "conflict" && (
+        <Card style={{ borderColor: t.danger, borderWidth: 1 }}>
+          <Text style={{ color: t.danger, fontWeight: "700", fontSize: 15 }}>Le VIN ne correspond pas à votre carte grise</Text>
+          <Body>{check.explanation ?? "Vérifiez le VIN saisi (case E de la carte grise)."}</Body>
+        </Card>
+      )}
       <Card>
         <Body>{p.summary}</Body>
         <Text style={{ color: p.confidence === "high" ? t.success : t.warning, fontSize: 13 }}>
@@ -58,11 +67,34 @@ function Specs({ v }: { v: Vehicle }) {
   );
 }
 
+function CorrectionCard({ v }: { v: Vehicle }) {
+  const [open, setOpen] = useState(v.status === "FAILED");
+  const [hints, setHints] = useState<OwnerHints>(v.declared ?? {});
+  const research = useResearchAgain(v.id);
+
+  if (!open) {
+    return <Button label="Ce n'est pas ma voiture ? Corriger" variant="secondary" onPress={() => setOpen(true)} />;
+  }
+  return (
+    <Card style={{ gap: 14 }}>
+      <Body style={{ fontWeight: "600" }}>
+        {v.status === "FAILED" ? "La recherche n'a pas abouti." : "Corriger les informations de votre voiture"}
+      </Body>
+      <OwnerHintsFields value={hints} onChange={setHints} />
+      <Button
+        label="Relancer la recherche"
+        onPress={() => research.mutate(cleanHints(hints), { onSuccess: () => setOpen(false) })}
+        loading={research.isPending}
+      />
+      {research.error ? <Body muted>{research.error.message}</Body> : null}
+    </Card>
+  );
+}
+
 function Dashboard({ id }: { id: string }) {
   const t = useTheme();
   const { data: v, isLoading } = useVehicle(id);
   const update = useUpdateVehicle(id);
-  const retry = useRetryVehicle(id);
   const remove = useDeleteVehicle();
 
   if (isLoading || !v) {
@@ -103,13 +135,8 @@ function Dashboard({ id }: { id: string }) {
           <Body style={{ flex: 1 }}>L'agent IA recherche les caractéristiques de votre voiture. Cela prend en général moins d'une minute.</Body>
         </Card>
       )}
-      {v.status === "FAILED" && (
-        <Card>
-          <Body>La recherche n'a pas abouti. Vérifiez le VIN ou réessayez.</Body>
-          <Button label="Réessayer" onPress={() => retry.mutate()} loading={retry.isPending} />
-        </Card>
-      )}
       {v.status === "READY" && v.profile && <Specs v={v} />}
+      {v.status !== "PENDING" && <CorrectionCard key={v.status} v={v} />}
 
       <View style={{ marginTop: 8 }}>
         <Button label="Supprimer cette voiture" variant="danger" onPress={confirmDelete} loading={remove.isPending} />

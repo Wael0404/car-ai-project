@@ -8,12 +8,31 @@ import type { Prisma } from "../generated/prisma/client.js";
 
 const MAX_VEHICLES_PER_USER = 10;
 
-const AddVehicleBody = z.object({
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .optional()
+    .transform((s) => (s ? s : undefined));
+
+/** What the owner reads on the registration card (all optional). */
+const OwnerHintsBody = z.object({
+  make: optionalText(40),
+  model: optionalText(60),
+  variant: optionalText(80),
+  firstRegistration: optionalText(10),
+});
+
+const AddVehicleBody = OwnerHintsBody.extend({
   vin: z.string().min(11).max(25),
   nickname: z.string().trim().min(1).max(60).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
 });
-const UpdateVehicleBody = AddVehicleBody.omit({ vin: true });
+const UpdateVehicleBody = z.object({
+  nickname: z.string().trim().min(1).max(60).optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+});
 const IdParams = z.object({ id: z.uuid() });
 
 type VehicleWithSpec = Prisma.VehicleGetPayload<{ include: { spec: true } }>;
@@ -26,6 +45,12 @@ function toDto(v: VehicleWithSpec) {
     vin: v.vin,
     nickname: v.nickname,
     color: v.color,
+    declared: {
+      make: v.declaredMake,
+      model: v.declaredModel,
+      variant: v.declaredVariant,
+      firstRegistration: v.firstRegistration,
+    },
     createdAt: v.createdAt,
     status: spec?.status ?? "PENDING",
     profile: spec?.status === "READY" ? spec.data : null,
@@ -70,6 +95,12 @@ export async function vehicleRoutes(app: FastifyInstance) {
     if (!check.valid) return reply.code(400).send({ error: check.reason });
     const { vin } = check;
     const userId = req.user.sub;
+    const hints = {
+      make: body.make,
+      model: body.model,
+      variant: body.variant,
+      firstRegistration: body.firstRegistration,
+    };
 
     const count = await prisma.vehicle.count({ where: { userId } });
     if (count >= MAX_VEHICLES_PER_USER) {
@@ -82,12 +113,21 @@ export async function vehicleRoutes(app: FastifyInstance) {
       if (spec.status === "FAILED") {
         await prisma.vehicleSpec.update({ where: { vin }, data: { status: "PENDING", error: null } });
       }
-      await enqueueVinResearch(vin);
+      await enqueueVinResearch(vin, hints);
     }
 
     try {
       const vehicle = await prisma.vehicle.create({
-        data: { userId, vin, nickname: body.nickname ?? null, color: body.color ?? "#9aa0a6" },
+        data: {
+          userId,
+          vin,
+          nickname: body.nickname ?? null,
+          color: body.color ?? "#9aa0a6",
+          declaredMake: hints.make ?? null,
+          declaredModel: hints.model ?? null,
+          declaredVariant: hints.variant ?? null,
+          firstRegistration: hints.firstRegistration ?? null,
+        },
         include: { spec: true },
       });
       return reply.code(201).send(toDto(vehicle));
@@ -108,17 +148,34 @@ export async function vehicleRoutes(app: FastifyInstance) {
     return toDto(vehicle);
   });
 
-  /** Asks the agent to research a VIN again after a failure. */
-  app.post("/vehicles/:id/retry", async (req, reply) => {
-    const { id } = IdParams.parse(req.params);
-    const vehicle = await prisma.vehicle.findFirst({ where: { id, userId: req.user.sub }, include: { spec: true } });
-    if (!vehicle) return reply.code(404).send({ error: "Véhicule introuvable." });
-    if (vehicle.spec?.status !== "FAILED") return reply.code(409).send({ error: "Recherche déjà terminée ou en cours." });
+  /**
+   * Runs the agent again for this car, with the make/model/type the owner
+   * read on the registration card (corrects a wrong identification).
+   */
+  app.post(
+    "/vehicles/:id/research",
+    { config: { rateLimit: { max: 5, timeWindow: "1 hour" } } },
+    async (req, reply) => {
+      const { id } = IdParams.parse(req.params);
+      const hints = OwnerHintsBody.parse(req.body ?? {});
+      const vehicle = await prisma.vehicle.findFirst({ where: { id, userId: req.user.sub }, include: { spec: true } });
+      if (!vehicle) return reply.code(404).send({ error: "Véhicule introuvable." });
+      if (vehicle.spec.status === "PENDING") return reply.code(409).send({ error: "Recherche déjà en cours." });
 
-    await prisma.vehicleSpec.update({ where: { vin: vehicle.vin }, data: { status: "PENDING", error: null } });
-    await enqueueVinResearch(vehicle.vin);
-    return reply.code(202).send({ ok: true });
-  });
+      await prisma.vehicle.update({
+        where: { id },
+        data: {
+          declaredMake: hints.make ?? null,
+          declaredModel: hints.model ?? null,
+          declaredVariant: hints.variant ?? null,
+          firstRegistration: hints.firstRegistration ?? null,
+        },
+      });
+      await prisma.vehicleSpec.update({ where: { vin: vehicle.vin }, data: { status: "PENDING", error: null } });
+      await enqueueVinResearch(vehicle.vin, hints);
+      return reply.code(202).send({ ok: true });
+    },
+  );
 
   app.delete("/vehicles/:id", async (req, reply) => {
     const { id } = IdParams.parse(req.params);

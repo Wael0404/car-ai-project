@@ -16,7 +16,7 @@ const log = pino({ name: "vin-worker" });
 const worker = new Worker<VinJobData>(
   VIN_QUEUE,
   async (job) => {
-    const { vin } = job.data;
+    const { vin, hints } = job.data;
     const spec = await prisma.vehicleSpec.findUnique({ where: { vin } });
     if (!spec || spec.status === "READY") return; // already done by another job
 
@@ -24,7 +24,7 @@ const worker = new Worker<VinJobData>(
     log.info({ vin, attempt: job.attemptsMade + 1 }, "Researching VIN");
 
     try {
-      const profile = await researchVehicle(vin);
+      const profile = await researchVehicle(vin, hints);
       await prisma.vehicleSpec.update({
         where: { vin },
         data: {

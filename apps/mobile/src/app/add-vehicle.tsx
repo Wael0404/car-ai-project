@@ -2,10 +2,12 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { ColorPicker } from "@/components/ColorPicker";
+import { cleanHints, OwnerHintsFields } from "@/components/OwnerHintsFields";
 import { RequireAuth } from "@/components/RequireAuth";
 import { Body, Button, Field } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import { PAINT_COLORS, useTheme } from "@/lib/theme";
+import type { OwnerHints } from "@/lib/types";
 import { useAddVehicle } from "@/lib/vehicles";
 import { normalizeVin, vinError } from "@/lib/vin";
 
@@ -14,6 +16,7 @@ function AddVehicleForm() {
   const [vin, setVin] = useState("");
   const [nickname, setNickname] = useState("");
   const [color, setColor] = useState(PAINT_COLORS[2]!.hex);
+  const [hints, setHints] = useState<OwnerHints>({});
   const add = useAddVehicle();
 
   const localError = vinError(vin);
@@ -22,7 +25,7 @@ function AddVehicleForm() {
 
   function submit() {
     add.mutate(
-      { vin: normalizeVin(vin), nickname: nickname.trim() || undefined, color },
+      { vin: normalizeVin(vin), nickname: nickname.trim() || undefined, color, ...cleanHints(hints) },
       { onSuccess: (vehicle) => router.replace({ pathname: "/vehicle/[id]", params: { id: vehicle.id } }) },
     );
   }
@@ -44,6 +47,7 @@ function AddVehicleForm() {
         error={localError ?? serverError}
         style={{ fontVariant: ["tabular-nums"], letterSpacing: 1.5 }}
       />
+      <OwnerHintsFields value={hints} onChange={setHints} />
       <Field label="Surnom (facultatif)" value={nickname} onChangeText={setNickname} placeholder="Ma Golf" maxLength={60} />
       <View style={{ gap: 10 }}>
         <Body muted style={{ fontSize: 13, fontWeight: "600" }}>

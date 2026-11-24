@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import type { Vehicle } from "./types";
+import type { OwnerHints, Vehicle } from "./types";
 
 const POLL_MS = 4000;
 
@@ -45,10 +45,10 @@ export function useUpdateVehicle(id: string) {
   });
 }
 
-export function useRetryVehicle(id: string) {
+export function useResearchAgain(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => api.retryVehicle(id),
+    mutationFn: (hints: OwnerHints) => api.researchAgain(id, hints),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicles"] }),
   });
 }

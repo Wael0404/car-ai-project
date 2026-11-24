@@ -40,6 +40,13 @@ model Vehicle {
   nickname  String?      @db.VarChar(60)
   /// Paint color chosen by the user (hex). A VIN does not encode the color.
   color     String       @default("#9aa0a6") @db.VarChar(7)
+  /// What the owner declares from the registration card (carte grise):
+  /// constructeur, type commercial, type constructeur, first registration.
+  /// Hints for the agent.
+  declaredMake      String? @db.VarChar(40)
+  declaredModel     String? @db.VarChar(60)
+  declaredVariant   String? @db.VarChar(80)
+  firstRegistration String? @db.VarChar(10)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 

@@ -31,17 +31,30 @@ export interface VehicleProfile {
   manufacturer: string | null;
   plantCountry: string | null;
   summary: string;
+  ownerDataCheck?: {
+    status: "match" | "conflict" | "not_provided" | "unverifiable";
+    explanation: string | null;
+  };
   confidence: "high" | "medium" | "low";
   sources: string[];
 }
 
 export type Model3D = { kind: "glb"; url: string } | { kind: "procedural"; bodyType: BodyType };
 
+/** What the owner reads on the registration card (carte grise). */
+export interface OwnerHints {
+  make?: string | null; // Constructeur
+  model?: string | null; // Type commercial
+  variant?: string | null; // Type constructeur
+  firstRegistration?: string | null; // Date de 1re mise en circulation
+}
+
 export interface Vehicle {
   id: string;
   vin: string;
   nickname: string | null;
   color: string;
+  declared: OwnerHints;
   createdAt: string;
   status: "PENDING" | "READY" | "FAILED";
   profile: VehicleProfile | null;

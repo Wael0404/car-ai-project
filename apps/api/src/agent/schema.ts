@@ -37,6 +37,13 @@ export const VehicleProfileSchema = z.object({
   manufacturer: z.string().nullable(),
   plantCountry: z.string().nullable(),
   summary: z.string().describe("2 or 3 sentences in French describing the vehicle"),
+  ownerDataCheck: z.object({
+    status: z.enum(["match", "conflict", "not_provided", "unverifiable"]),
+    explanation: z
+      .string()
+      .nullable()
+      .describe("In French, for the owner: what the VIN says versus what they declared"),
+  }),
   confidence: z.enum(["high", "medium", "low"]),
   sources: z.array(z.string()).describe("URLs used, NHTSA included when it was useful"),
 });
