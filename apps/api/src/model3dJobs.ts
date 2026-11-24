@@ -11,7 +11,8 @@ const RETRY_NOT_FOUND_MS = 30 * 24 * 3600 * 1000;
 /** Called when a VIN profile is ready: makes sure its car has a 3D model search. */
 export async function ensureModel3D(profile: VehicleProfile, log: Logger): Promise<void> {
   if (!profile.make || !profile.model) return;
-  const key = modelKey(profile.make, profile.model, profile.generation);
+  const variant = profile.bodyVariant || "standard";
+  const key = modelKey(profile.make, profile.model, profile.generation, variant);
   const row = await prisma.carModel3D.findUnique({ where: { key } });
 
   const stale = row?.status === "NOT_FOUND" && Date.now() - row.updatedAt.getTime() > RETRY_NOT_FOUND_MS;
@@ -27,6 +28,7 @@ export async function ensureModel3D(profile: VehicleProfile, log: Logger): Promi
     make: profile.make,
     model: profile.model,
     generation: profile.generation,
+    variant,
     modelYear: profile.modelYear,
     bodyType: profile.bodyType,
   });

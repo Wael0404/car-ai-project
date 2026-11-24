@@ -50,6 +50,8 @@ export interface Model3DJobData {
   make: string;
   model: string;
   generation: string | null;
+  /** "standard", "Cross", "4x4"... */
+  variant: string;
   modelYear: number | null;
   bodyType: string | null;
 }

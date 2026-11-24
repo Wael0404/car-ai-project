@@ -38,11 +38,16 @@ const IdParams = z.object({ id: z.uuid() });
 type VehicleWithSpec = Prisma.VehicleGetPayload<{ include: { spec: true } }>;
 
 /** Public shape of a vehicle, as the mobile app receives it. */
-type Profile = { make?: string | null; model?: string | null; generation?: string | null } | null;
+type Profile = {
+  make?: string | null;
+  model?: string | null;
+  generation?: string | null;
+  bodyVariant?: string | null;
+} | null;
 
 function catalogKey(v: VehicleWithSpec): string | null {
   const p = v.spec.data as Profile;
-  return p?.make && p.model ? modelKey(p.make, p.model, p.generation ?? null) : null;
+  return p?.make && p.model ? modelKey(p.make, p.model, p.generation ?? null, p.bodyVariant ?? null) : null;
 }
 
 /** Loads the 3D catalog rows of these vehicles in one query. */

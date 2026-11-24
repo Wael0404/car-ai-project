@@ -31,6 +31,7 @@ Termine par un compte rendu factuel de ce que tu as trouvé, avec les URL des so
 const EXTRACT_SYSTEM = `Tu convertis un compte rendu de recherche sur un véhicule en fiche structurée.
 N'utilise que les faits présents dans le compte rendu et dans les données NHTSA. Mets null pour toute valeur inconnue.
 Le champ summary est rédigé en français. confidence vaut "high" seulement si marque, modèle, année et moteur sont confirmés.
+bodyVariant : la version visuellement distincte du modèle quand elle est établie (par exemple "Cross", "4x4", "Sport", "Abarth", "GTI", "SW/Break", "Cabrio") ; "standard" pour la carrosserie normale ou si rien n'indique une version particulière. Une simple finition (Lounge, City Life, Easy…) n'est pas une version distincte : c'est "standard".
 ownerDataCheck : "not_provided" si le propriétaire n'a rien déclaré, "match" si ses informations concordent avec le VIN, "conflict" si le VIN les contredit (explique-le simplement en français), "unverifiable" si le VIN ne permet pas de trancher. Les informations officielles de la carte grise priment sur les déductions faites à partir du VIN.`;
 
 export class AgentRefusalError extends Error {}

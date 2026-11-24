@@ -38,12 +38,15 @@ export interface CatalogRow {
 }
 
 /**
- * Key shared by every owner of the same car: "make|model|generation".
- * The generation text comes from the VIN agent, e.g. "Panda III (312/319)".
+ * Key shared by every owner of the same car: "make|model|generation|variant".
+ * Generation and variant come from the VIN agent, e.g. "Panda III (312/319)"
+ * and "standard" or "Cross" (a Panda Cross must not show a regular Panda).
  */
-export function modelKey(make: string, model: string, generation: string | null): string {
+export function modelKey(make: string, model: string, generation: string | null, variant: string | null): string {
   const clean = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
-  return [clean(make), clean(model), generation ? clean(generation) : ""].join("|").slice(0, 200);
+  return [clean(make), clean(model), generation ? clean(generation) : "", clean(variant || "standard")]
+    .join("|")
+    .slice(0, 200);
 }
 
 export const MODELS_DIR = fileURLToPath(new URL("../../models/", import.meta.url));

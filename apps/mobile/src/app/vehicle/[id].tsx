@@ -36,6 +36,7 @@ function Specs({ v }: { v: Vehicle }) {
         <Row label="Modèle" value={p.model} />
         <Row label="Version" value={p.trim} />
         <Row label="Génération" value={p.generation} />
+        <Row label="Version" value={p.bodyVariant && p.bodyVariant !== "standard" ? p.bodyVariant : "Standard"} />
         <Row label="Année modèle" value={p.modelYear} />
         <Row label="Carrosserie" value={p.bodyType} />
         <Row label="Portes" value={p.doors} />

@@ -15,6 +15,7 @@ export interface VehicleProfile {
   model: string | null;
   trim: string | null;
   generation: string | null;
+  bodyVariant?: string;
   modelYear: number | null;
   bodyType: BodyType;
   doors: number | null;

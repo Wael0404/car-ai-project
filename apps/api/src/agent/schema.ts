@@ -21,6 +21,12 @@ export const VehicleProfileSchema = z.object({
   model: z.string().nullable().describe("Model, e.g. Golf"),
   trim: z.string().nullable().describe("Trim / version, e.g. 1.6 TDI Highline"),
   generation: z.string().nullable().describe("Generation or chassis code, e.g. Mk7 / 5G"),
+  // Not nullable on purpose: structured outputs allow at most 16 nullable fields.
+  bodyVariant: z
+    .string()
+    .describe(
+      'Visually distinct version of the model, e.g. "Cross", "4x4", "Sport", "Abarth", "GTI", "SW/Break", "Cabrio"; "standard" for the regular body',
+    ),
   modelYear: z.number().int().nullable(),
   bodyType: z.enum(BODY_TYPES),
   doors: z.number().int().nullable(),
