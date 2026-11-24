@@ -193,7 +193,13 @@ function Turntable({
 export function Car3D({ model3d, color, height = 280 }: { model3d: Model3D | null; color: string; height?: number }) {
   const [viewerFailed, setViewerFailed] = useState(false);
   if (model3d?.kind === "sketchfab" && !viewerFailed) {
-    return <SketchfabViewer uid={model3d.uid} color={color} height={height} onError={() => setViewerFailed(true)} />;
+    return <SketchfabViewer
+        uid={model3d.uid}
+        color={color}
+        height={height}
+        thumbnailUrl={model3d.thumbnailUrl}
+        onError={() => setViewerFailed(true)}
+      />;
   }
   const fallback: Model3D | null =
     model3d?.kind === "sketchfab" ? { kind: "procedural", bodyType: model3d.bodyType } : model3d;

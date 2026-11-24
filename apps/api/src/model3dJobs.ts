@@ -48,7 +48,7 @@ export async function runModel3DSearch(data: Model3DJobData, finalAttempt: boole
             author: candidate.author,
             license: candidate.license,
             viewerUrl: candidate.viewerUrl,
-            thumbnailUrl: candidate.thumbnailUrl,
+            thumbnailUrl: candidate.previewUrl ?? candidate.thumbnailUrl,
             reason,
           }
         : { status: "NOT_FOUND", sketchfabUid: null, reason },

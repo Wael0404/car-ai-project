@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Animated, Image, StyleSheet, View } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
 /**
@@ -44,7 +44,7 @@ function viewerHtml(uid: string, color: string): string {
   try {
     var client = new Sketchfab(document.getElementById("v"));
     client.init("${safeUid}", {
-      autostart: 1, autospin: 0.2, transparent: 1, preload: 1,
+      autostart: 1, autospin: 0.2, transparent: 1, dnt: 1,
       ui_infos: 0, ui_controls: 0, ui_stop: 0, ui_inspector: 0, ui_ar: 0, ui_help: 0,
       ui_settings: 0, ui_vr: 0, ui_fullscreen: 0, ui_annotations: 0, ui_hint: 0,
       success: function (api) {
@@ -61,24 +61,38 @@ export function SketchfabViewer({
   uid,
   color,
   height,
+  thumbnailUrl,
   onError,
 }: {
   uid: string;
   color: string;
   height: number;
+  thumbnailUrl?: string | null;
   onError: () => void;
 }) {
   const [loading, setLoading] = useState(true);
+  const opacity = useMemo(() => new Animated.Value(0), []);
   const html = useMemo(() => viewerHtml(uid, color), [uid, color]);
 
   function onMessage(e: WebViewMessageEvent) {
-    if (e.nativeEvent.data === "ready") setLoading(false);
+    if (e.nativeEvent.data === "ready") {
+      setLoading(false);
+      Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    }
     if (e.nativeEvent.data === "error") onError();
   }
 
   return (
     <View style={[styles.container, { height }]}>
+      {/* The preview image shows instantly (cached by the phone) while the 3D loads. */}
+      {thumbnailUrl ? (
+        <Image source={{ uri: thumbnailUrl }} style={StyleSheet.absoluteFill} resizeMode="contain" />
+      ) : null}
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity }]}>
       <WebView
+        // Reuse the viewer and model files already downloaded on this phone.
+        cacheEnabled
+        cacheMode="LOAD_CACHE_ELSE_NETWORK"
         source={{ html, baseUrl: "https://localhost" }}
         originWhitelist={["https://*"]}
         onMessage={onMessage}
@@ -96,7 +110,8 @@ export function SketchfabViewer({
           req.url.startsWith("https://static.sketchfab.com/")
         }
       />
-      {loading && <ActivityIndicator style={StyleSheet.absoluteFill} />}
+      </Animated.View>
+      {loading && <ActivityIndicator style={styles.spinner} />}
     </View>
   );
 }
@@ -104,4 +119,5 @@ export function SketchfabViewer({
 const styles = StyleSheet.create({
   container: { width: "100%", borderRadius: 16, overflow: "hidden" },
   webview: { flex: 1, backgroundColor: "transparent" },
+  spinner: { position: "absolute", right: 12, bottom: 12 },
 });

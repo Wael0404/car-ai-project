@@ -13,6 +13,8 @@ export interface SketchfabCandidate {
   license: string | null;
   viewerUrl: string;
   thumbnailUrl: string | null;
+  /** Larger image shown in the app while the 3D viewer loads. */
+  previewUrl: string | null;
   faceCount: number;
   tags: string[];
 }
@@ -30,9 +32,8 @@ interface SearchResult {
   thumbnails?: { images?: Array<{ url: string; width: number }> };
 }
 
-function pickThumbnail(images: Array<{ url: string; width: number }> = []): string | null {
-  // ~512 px is enough for the vision check and cheap in tokens.
-  const sorted = [...images].sort((a, b) => Math.abs(a.width - 512) - Math.abs(b.width - 512));
+function pickImage(images: Array<{ url: string; width: number }> = [], width: number): string | null {
+  const sorted = [...images].sort((a, b) => Math.abs(a.width - width) - Math.abs(b.width - width));
   return sorted[0]?.url ?? null;
 }
 
@@ -56,7 +57,9 @@ export async function searchSketchfab(query: string, count = 24): Promise<Sketch
       author: r.user?.username ?? "inconnu",
       license: typeof r.license === "string" ? r.license : (r.license?.label ?? null),
       viewerUrl: r.viewerUrl,
-      thumbnailUrl: pickThumbnail(r.thumbnails?.images),
+      // ~256 px is enough for the vision check and cheap in tokens.
+      thumbnailUrl: pickImage(r.thumbnails?.images, 256),
+      previewUrl: pickImage(r.thumbnails?.images, 720),
       faceCount: r.faceCount ?? 0,
       tags: (r.tags ?? []).map((t) => t.name).slice(0, 15),
     }));

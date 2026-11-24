@@ -23,7 +23,7 @@ export interface ModelCredit {
 
 export type Model3D =
   | { kind: "glb"; url: string; credit: ModelCredit | null }
-  | { kind: "sketchfab"; uid: string; credit: ModelCredit; bodyType: BodyType }
+  | { kind: "sketchfab"; uid: string; credit: ModelCredit; bodyType: BodyType; thumbnailUrl: string | null }
   | { kind: "procedural"; bodyType: BodyType; searching: boolean };
 
 /** Row of the CarModel3D table, as needed here. */
@@ -34,6 +34,7 @@ export interface CatalogRow {
   author: string | null;
   license: string | null;
   viewerUrl: string | null;
+  thumbnailUrl: string | null;
 }
 
 /**
@@ -112,6 +113,7 @@ export function resolveModel3D(spec: Spec3D, row?: CatalogRow | null): Model3D {
       kind: "sketchfab",
       uid: row.sketchfabUid,
       bodyType,
+      thumbnailUrl: row.thumbnailUrl,
       credit: {
         title: row.title ?? "Modèle 3D",
         author: row.author ?? "inconnu",
