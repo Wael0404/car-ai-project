@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String         @id @default(uuid()) @db.Uuid
+  email         String         @unique
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  vehicles      Vehicle[]
+  refreshTokens RefreshToken[]
+}
+
+/// Refresh tokens are stored hashed (SHA-256) and rotated on every use.
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+/// A car owned by a user. Several users may own a car with the same VIN
+/// over time, so the spec lives in VehicleSpec, shared by VIN.
+model Vehicle {
+  id        String       @id @default(uuid()) @db.Uuid
+  userId    String       @db.Uuid
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vin       String       @db.VarChar(17)
+  spec      VehicleSpec  @relation(fields: [vin], references: [vin])
+  nickname  String?      @db.VarChar(60)
+  /// Paint color chosen by the user (hex). A VIN does not encode the color.
+  color     String       @default("#9aa0a6") @db.VarChar(7)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([userId, vin])
+  @@index([userId])
+}
+
+enum SpecStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+/// Result of the AI agent, cached per VIN: each VIN is researched once,
+/// whatever the number of users who add it.
+model VehicleSpec {
+  vin        String      @id @db.VarChar(17)
+  status     SpecStatus  @default(PENDING)
+  make       String?
+  model      String?
+  modelYear  Int?
+  bodyType   String?
+  /// Full structured profile (see src/agent/schema.ts).
+  data       Json?
+  error      String?
+  attempts   Int         @default(0)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  vehicles   Vehicle[]
+
+  @@index([status])
+}
