@@ -121,6 +121,14 @@ function Dashboard({ id }: { id: string }) {
       <Card style={{ padding: 0, overflow: "hidden" }}>
         <Car3D model3d={v.model3d} color={v.color} />
       </Card>
+      {v.model3d?.kind === "glb" && v.model3d.credit && (
+        <Text
+          style={{ color: t.muted, fontSize: 11 }}
+          onPress={() => v.model3d?.kind === "glb" && v.model3d.credit && Linking.openURL(v.model3d.credit.url)}
+        >
+          Modèle 3D « {v.model3d.credit.title} » par {v.model3d.credit.author} ({v.model3d.credit.license})
+        </Text>
+      )}
       <ColorPicker value={v.color} onChange={(color) => update.mutate({ color })} />
       {v.model3d?.kind === "procedural" && (
         <Body muted style={{ fontSize: 12 }}>

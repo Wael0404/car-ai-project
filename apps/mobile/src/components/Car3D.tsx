@@ -1,5 +1,5 @@
 import { Canvas, useFrame, useLoader } from "@react-three/fiber/native";
-import { Suspense, useMemo, useRef, type MutableRefObject, type ReactNode } from "react";
+import { Component, Suspense, useMemo, useRef, type MutableRefObject, type ReactNode } from "react";
 import { PanResponder, StyleSheet, View } from "react-native";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -125,7 +125,22 @@ function ProceduralCar({ bodyType, color }: { bodyType: BodyType; color: string 
   );
 }
 
-/** Real model: every material whose name contains "paint" takes the user's color. */
+/** Falls back to the generic car if the real model cannot be downloaded or parsed. */
+class ModelErrorBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
+/** Body paint materials are repainted with the user's color (names vary by author). */
+const PAINT_MATERIAL = /paint|carpaint|body|lack|vernice|carrosserie/i;
+const NOT_PAINT = /glass|window|chrome|tyre|tire|rubber|light|lamp|interior|seat|plastic|black/i;
+
+/** Real model of the car. */
 function GlbCar({ url, color }: { url: string; color: string }) {
   const gltf = useLoader(GLTFLoader, url);
   const scene = useMemo(() => {
@@ -135,7 +150,7 @@ function GlbCar({ url, color }: { url: string; color: string }) {
       if (!mesh.isMesh) return;
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       materials.forEach((m, i) => {
-        if (m.name.toLowerCase().includes("paint") && m instanceof THREE.MeshStandardMaterial) {
+        if (PAINT_MATERIAL.test(m.name) && !NOT_PAINT.test(m.name) && m instanceof THREE.MeshStandardMaterial) {
           const repainted = m.clone();
           repainted.color.set(color);
           if (Array.isArray(mesh.material)) mesh.material[i] = repainted;
@@ -210,7 +225,9 @@ export function Car3D({ model3d, color, height = 280 }: { model3d: Model3D | nul
         <Suspense fallback={null}>
           <Turntable yaw={yaw} dragging={dragging}>
             {model.kind === "glb" ? (
-              <GlbCar url={model.url} color={color} />
+              <ModelErrorBoundary fallback={<ProceduralCar bodyType="hatchback" color={color} />}>
+                <GlbCar url={model.url} color={color} />
+              </ModelErrorBoundary>
             ) : (
               <ProceduralCar bodyType={model.bodyType} color={color} />
             )}

@@ -60,6 +60,7 @@ function toDto(v: VehicleWithSpec) {
             make: spec.make,
             model: spec.model,
             modelYear: spec.modelYear,
+            generation: (spec.data as { generation?: string | null } | null)?.generation ?? null,
             bodyType: spec.bodyType,
           })
         : null,

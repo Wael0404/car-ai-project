@@ -39,7 +39,16 @@ export interface VehicleProfile {
   sources: string[];
 }
 
-export type Model3D = { kind: "glb"; url: string } | { kind: "procedural"; bodyType: BodyType };
+export interface ModelCredit {
+  title: string;
+  author: string;
+  license: string;
+  url: string;
+}
+
+export type Model3D =
+  | { kind: "glb"; url: string; credit: ModelCredit | null }
+  | { kind: "procedural"; bodyType: BodyType };
 
 /** What the owner reads on the registration card (carte grise). */
 export interface OwnerHints {

@@ -2,10 +2,12 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import jwt from "@fastify/jwt";
 import rateLimit from "@fastify/rate-limit";
+import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { ZodError } from "zod";
 import { config, isProd } from "./config.js";
 import { prisma } from "./lib/db.js";
+import { MODELS_DIR, SERVE_MODELS_LOCALLY } from "./lib/model3d.js";
 import { redis } from "./lib/redis.js";
 import { authRoutes } from "./routes/auth.js";
 import { vehicleRoutes } from "./routes/vehicles.js";
@@ -65,6 +67,16 @@ export async function buildApp() {
     await redis.ping();
     return { ok: true };
   });
+
+  // Development only: serve 3D models from apps/api/models (production uses a CDN).
+  if (SERVE_MODELS_LOCALLY) {
+    await app.register(fastifyStatic, {
+      root: MODELS_DIR,
+      prefix: "/models/",
+      maxAge: "7d",
+      immutable: true,
+    });
+  }
 
   await app.register(authRoutes, { prefix: "/v1" });
   await app.register(vehicleRoutes, { prefix: "/v1" });
