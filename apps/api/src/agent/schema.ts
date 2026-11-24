@@ -39,10 +39,10 @@ export const VehicleProfileSchema = z.object({
   summary: z.string().describe("2 or 3 sentences in French describing the vehicle"),
   ownerDataCheck: z.object({
     status: z.enum(["match", "conflict", "not_provided", "unverifiable"]),
+    // Not nullable on purpose: structured outputs allow at most 16 nullable fields.
     explanation: z
       .string()
-      .nullable()
-      .describe("In French, for the owner: what the VIN says versus what they declared"),
+      .describe("In French, for the owner: what the VIN says versus what they declared; empty string if nothing to say"),
   }),
   confidence: z.enum(["high", "medium", "low"]),
   sources: z.array(z.string()).describe("URLs used, NHTSA included when it was useful"),
