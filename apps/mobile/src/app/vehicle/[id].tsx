@@ -2,7 +2,6 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Alert, Linking, View } from "react-native";
 import { Car3D } from "@/components/Car3D";
-import { ColorPicker } from "@/components/ColorPicker";
 import { HistorySection } from "@/components/HistorySection";
 import { MaintenanceSection } from "@/components/MaintenanceSection";
 import { cleanHints, OwnerHintsFields } from "@/components/OwnerHintsFields";
@@ -12,7 +11,7 @@ import { Button, Card, Pill, Row, Screen, Segmented, SectionTitle, Skeleton, Ste
 import { vehicleTitle } from "@/lib/format";
 import { space, useTheme } from "@/lib/theme";
 import type { Maintenance, OwnerHints, Vehicle } from "@/lib/types";
-import { useDeleteVehicle, useMaintenance, useResearchAgain, useUpdateVehicle, useVehicle } from "@/lib/vehicles";
+import { useDeleteVehicle, useMaintenance, useResearchAgain, useVehicle } from "@/lib/vehicles";
 
 type Tab = "entretien" | "historique" | "fiche" | "reglages";
 const CONFIDENCE = { high: "élevée", medium: "moyenne", low: "faible" } as const;
@@ -130,7 +129,6 @@ function Specs({ v }: { v: Vehicle }) {
 }
 
 function Settings({ v, onDeleted }: { v: Vehicle; onDeleted: () => void }) {
-  const update = useUpdateVehicle(v.id);
   const research = useResearchAgain(v.id);
   const remove = useDeleteVehicle();
   const [hints, setHints] = useState<OwnerHints>(v.declared ?? {});
@@ -152,12 +150,6 @@ function Settings({ v, onDeleted }: { v: Vehicle; onDeleted: () => void }) {
 
   return (
     <View style={{ gap: space.lg }}>
-      <SectionTitle>Couleur</SectionTitle>
-      <Card>
-        <ColorPicker value={v.color} onChange={(color) => update.mutate({ color })} />
-        {update.error ? <Txt tone="danger">Couleur non enregistrée : {update.error.message}</Txt> : null}
-      </Card>
-
       <SectionTitle>Ce n'est pas ma voiture ?</SectionTitle>
       <Card style={{ gap: space.lg }}>
         <Txt tone="muted">Recopiez les informations de votre carte grise, puis relancez la recherche.</Txt>
