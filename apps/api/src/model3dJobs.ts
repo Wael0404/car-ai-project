@@ -8,8 +8,10 @@ import { prisma } from "./lib/db.js";
 import { MODELS_DIR, modelKey } from "./lib/model3d.js";
 import { enqueueModel3DSearch, type Model3DJobData } from "./lib/queue.js";
 
-/** A car with no free 3D model is searched again after this delay. */
-const RETRY_NOT_FOUND_MS = 30 * 24 * 3600 * 1000;
+/**
+ * The 3D/photo search runs ONCE per car version and is stored for good:
+ * no periodic re-search (the owner wants Claude spending kept minimal).
+ */
 
 /** Called when a VIN profile is ready: makes sure its car has a 3D model search. */
 export async function ensureModel3D(profile: VehicleProfile, log: Logger): Promise<void> {
@@ -18,10 +20,7 @@ export async function ensureModel3D(profile: VehicleProfile, log: Logger): Promi
   const key = modelKey(profile.make, profile.model, profile.generation, variant);
   const row = await prisma.carModel3D.findUnique({ where: { key } });
 
-  // Not found, or only a "closest" model: look again later, an exact one may appear.
-  const retryable = row?.status === "NOT_FOUND" || (row?.status === "FOUND" && !row.exactMatch);
-  const stale = retryable && Date.now() - row!.updatedAt.getTime() > RETRY_NOT_FOUND_MS;
-  if (row && !stale) return; // already found, searching, or recently checked
+  if (row) return; // already found, being searched, or searched once with no result
 
   await prisma.carModel3D.upsert({
     where: { key },

@@ -5,8 +5,8 @@ import { prisma } from "./lib/db.js";
 import type { PlanItem } from "./lib/maintenance.js";
 import { enqueuePriceLookup, type PriceJobData } from "./lib/queue.js";
 
-/** Prices change: a lookup is reused for a week, then refreshed on the next view. */
-export const PRICE_TTL_MS = 7 * 24 * 3600 * 1000;
+/** Prices change slowly: a lookup is reused 30 days, then refreshed on the next view. */
+export const PRICE_TTL_MS = 30 * 24 * 3600 * 1000;
 
 /**
  * Returns the cached prices, or queues a lookup (only when an owner opens the
