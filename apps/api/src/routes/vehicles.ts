@@ -38,6 +38,24 @@ const IdParams = z.object({ id: z.uuid() });
 type VehicleWithSpec = Prisma.VehicleGetPayload<{ include: { spec: true } }>;
 
 /** Public shape of a vehicle, as the mobile app receives it. */
+/**
+ * The worker queues the 3D search right after the profile is ready. Until its
+ * row exists, report "searching" so the app keeps polling and shows the model
+ * as soon as it is found or generated.
+ */
+const SEARCH_PENDING: CatalogRow = {
+  status: "SEARCHING",
+  sketchfabUid: null,
+  exactMatch: false,
+  source: "sketchfab",
+  glbFile: null,
+  title: null,
+  author: null,
+  license: null,
+  viewerUrl: null,
+  thumbnailUrl: null,
+};
+
 type Profile = {
   make?: string | null;
   model?: string | null;
@@ -83,7 +101,7 @@ function toDto(v: VehicleWithSpec, catalog: Map<string, CatalogRow>) {
             modelYear: spec.modelYear,
             generation: (spec.data as Profile)?.generation ?? null,
             bodyType: spec.bodyType,
-          }, key ? catalog.get(key) : null)
+          }, key ? (catalog.get(key) ?? SEARCH_PENDING) : null)
         : null,
   };
 }
