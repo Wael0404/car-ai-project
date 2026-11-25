@@ -3,6 +3,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { config } from "../config.js";
 import { fallbackParams, imageBlock } from "../lib/claude.js";
+import { recordUsage } from "../lib/usage.js";
 import type { CarPhoto } from "./commons.js";
 import type { CarIdentity } from "./modelFinder.js";
 import { describe, gatherPhotos } from "./photoTo3D.js";
@@ -52,13 +53,14 @@ export async function findCarGallery(car: CarIdentity): Promise<{ views: Gallery
   content.push({ type: "text", text: "Quelles photos retenir, et pour quel angle ?" });
 
   const response = await client.beta.messages.parse({
-    model: config.CLAUDE_VISION_MODEL,
+    model: config.CLAUDE_FAST_MODEL,
     max_tokens: 4000,
-    ...fallbackParams(config.CLAUDE_VISION_MODEL),
+    ...fallbackParams(config.CLAUDE_FAST_MODEL),
     output_config: { effort: "low", format: betaZodOutputFormat(Choice) },
     system: SYSTEM,
     messages: [{ role: "user", content }],
   });
+  recordUsage("photo-check", config.CLAUDE_FAST_MODEL, [response.usage]);
   const choice = response.parsed_output;
   if (response.stop_reason === "refusal" || !choice) throw new Error(`Photo selection failed (${response.stop_reason})`);
 

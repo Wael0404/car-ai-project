@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/db.js";
 import { modelKey, resolveModel3D, type CatalogRow } from "../lib/model3d.js";
 import { enqueueVinResearch } from "../lib/queue.js";
+import { normalizeCode } from "../lib/specReuse.js";
 import { validateVin } from "../lib/vin.js";
 import type { Prisma } from "../generated/prisma/client.js";
 
@@ -137,10 +138,11 @@ export async function vehicleRoutes(app: FastifyInstance) {
     if (!check.valid) return reply.code(400).send({ error: check.reason });
     const { vin } = check;
     const userId = req.user.sub;
+    // Codes normalised so identical registrations match (see lib/specReuse.ts).
     const hints = {
-      make: body.make,
-      model: body.model,
-      variant: body.variant,
+      make: normalizeCode(body.make),
+      model: normalizeCode(body.model),
+      variant: normalizeCode(body.variant),
       firstRegistration: body.firstRegistration,
     };
 
@@ -199,7 +201,13 @@ export async function vehicleRoutes(app: FastifyInstance) {
     { config: { rateLimit: { max: 5, timeWindow: "1 hour" } } },
     async (req, reply) => {
       const { id } = IdParams.parse(req.params);
-      const hints = OwnerHintsBody.parse(req.body ?? {});
+      const raw = OwnerHintsBody.parse(req.body ?? {});
+      const hints = {
+        ...raw,
+        make: normalizeCode(raw.make),
+        model: normalizeCode(raw.model),
+        variant: normalizeCode(raw.variant),
+      };
       const vehicle = await prisma.vehicle.findFirst({ where: { id, userId: req.user.sub }, include: { spec: true } });
       if (!vehicle) return reply.code(404).send({ error: "Véhicule introuvable." });
       if (vehicle.spec.status === "PENDING") return reply.code(409).send({ error: "Recherche déjà en cours." });

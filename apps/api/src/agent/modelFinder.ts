@@ -3,6 +3,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { config } from "../config.js";
 import { fallbackParams, imageBlock } from "../lib/claude.js";
+import { recordUsage } from "../lib/usage.js";
 import { searchSketchfab, type SketchfabCandidate } from "./sketchfab.js";
 
 const client = new Anthropic({ maxRetries: 3 });
@@ -115,13 +116,14 @@ export async function findCarModel(car: CarIdentity): Promise<ModelChoice> {
   content.push({ type: "text", text: "Quel candidat représente exactement cette voiture ? Réponds avec son uid ou \"none\"." });
 
   const response = await client.beta.messages.parse({
-    model: config.CLAUDE_VISION_MODEL,
+    model: config.CLAUDE_FAST_MODEL,
     max_tokens: 4000,
-    ...fallbackParams(config.CLAUDE_VISION_MODEL),
+    ...fallbackParams(config.CLAUDE_FAST_MODEL),
     output_config: { effort: "low", format: betaZodOutputFormat(ChoiceSchema) },
     system: SYSTEM,
     messages: [{ role: "user", content }],
   });
+  recordUsage("3d-model-check", config.CLAUDE_FAST_MODEL, [response.usage]);
 
   const choice = response.parsed_output;
   if (response.stop_reason === "refusal" || !choice) {

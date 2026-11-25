@@ -9,6 +9,8 @@ const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
  * (seen with Wikimedia); here a failing image is just skipped (null).
  */
 export async function imageBlock(url: string): Promise<Anthropic.Beta.BetaImageBlockParam | null> {
+  // Wikimedia thumbnails: ask for the 500 px size, enough to judge the car.
+  url = url.replace(/\/\d+px-/, "/500px-");
   try {
     const res = await fetch(url, {
       headers: { "user-agent": "CarAI/0.1 (car photo check)" },

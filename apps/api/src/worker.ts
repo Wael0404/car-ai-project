@@ -11,6 +11,7 @@ import { config } from "./config.js";
 import { prisma } from "./lib/db.js";
 import { MODEL3D_QUEUE, VIN_QUEUE, type Model3DJobData, type VinJobData } from "./lib/queue.js";
 import { ensureModel3D, runModel3DSearch } from "./model3dJobs.js";
+import { findReusableProfile } from "./lib/specReuse.js";
 import { createQueueConnection } from "./lib/redis.js";
 
 const log = pino({ name: "vin-worker" });
@@ -21,6 +22,19 @@ const worker = new Worker<VinJobData>(
     const { vin, hints } = job.data;
     const spec = await prisma.vehicleSpec.findUnique({ where: { vin } });
     if (!spec || spec.status === "READY") return; // already done by another job
+
+    // Free: same make + type constructeur + year already researched for another owner.
+    const reused = await findReusableProfile(vin, hints);
+    if (reused) {
+      const p = reused as unknown as VehicleProfile;
+      await prisma.vehicleSpec.update({
+        where: { vin },
+        data: { status: "READY", make: p.make, model: p.model, modelYear: p.modelYear, bodyType: p.bodyType, data: reused, error: null },
+      });
+      log.info({ vin, make: p.make, model: p.model }, "Profile reused from same type code (no AI cost)");
+      await ensureModel3D(p, log);
+      return;
+    }
 
     await prisma.vehicleSpec.update({ where: { vin }, data: { attempts: { increment: 1 } } });
     log.info({ vin, attempt: job.attemptsMade + 1 }, "Researching VIN");

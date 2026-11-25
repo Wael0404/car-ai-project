@@ -4,6 +4,7 @@ import { Client, handle_file } from "@gradio/client";
 import { z } from "zod";
 import { config } from "../config.js";
 import { fallbackParams, imageBlock } from "../lib/claude.js";
+import { recordUsage } from "../lib/usage.js";
 import { categoryCarPhotos, searchCarPhotos, type CarPhoto } from "./commons.js";
 import type { CarIdentity } from "./modelFinder.js";
 
@@ -94,13 +95,14 @@ export async function findCarPhoto(
   content.push({ type: "text", text: "Quelle photo utiliser ? Réponds avec son index, ou -1." });
 
   const response = await client.beta.messages.parse({
-    model: config.CLAUDE_VISION_MODEL,
+    model: config.CLAUDE_FAST_MODEL,
     max_tokens: 4000,
-    ...fallbackParams(config.CLAUDE_VISION_MODEL),
+    ...fallbackParams(config.CLAUDE_FAST_MODEL),
     output_config: { effort: "low", format: betaZodOutputFormat(PhotoChoice) },
     system: SYSTEM,
     messages: [{ role: "user", content }],
   });
+  recordUsage("photo-check", config.CLAUDE_FAST_MODEL, [response.usage]);
   const choice = response.parsed_output;
   if (response.stop_reason === "refusal" || !choice) throw new Error(`Photo selection failed (${response.stop_reason})`);
   const photo = photos[choice.index] ?? null;
