@@ -53,13 +53,13 @@ const slug = (key: string) =>
  * Returns false (and changes nothing) when no suitable photo exists.
  */
 async function generateFromPhoto(data: Model3DJobData, log: Logger): Promise<boolean> {
-  const { photo, reason } = await findCarPhoto(data);
+  const { photo, otherViews, reason } = await findCarPhoto(data);
   if (!photo) {
     log.info({ key: data.key, reason }, "No photo to generate a 3D model from");
     return false;
   }
-  log.info({ key: data.key, photo: photo.title }, "Generating 3D model from photo");
-  const glb = await generateGlb(photo);
+  log.info({ key: data.key, photo: photo.title, views: 1 + otherViews.length }, "Generating 3D model from photos");
+  const glb = await generateGlb(photo, otherViews);
 
   const file = `generated/${slug(data.key)}.glb`;
   await mkdir(MODELS_DIR + "generated", { recursive: true });

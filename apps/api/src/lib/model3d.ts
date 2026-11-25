@@ -41,6 +41,8 @@ export interface CatalogRow {
   exactMatch: boolean;
   source: string;
   glbFile: string | null;
+  /** Changes when the model is replaced: used to bust the app cache. */
+  updatedAt?: Date;
   title: string | null;
   author: string | null;
   license: string | null;
@@ -125,7 +127,7 @@ export function resolveModel3D(spec: Spec3D, row?: CatalogRow | null): Model3D {
   if (row?.status === "FOUND" && row.source === "generated" && row.glbFile && CDN_BASE) {
     return {
       kind: "glb",
-      url: `${CDN_BASE}/${row.glbFile}`,
+      url: `${CDN_BASE}/${row.glbFile}?v=${row.updatedAt?.getTime() ?? 0}`,
       generated: true,
       credit: {
         title: `Modèle 3D généré par IA d'après la photo « ${row.title ?? "Wikimedia Commons"} »`,
