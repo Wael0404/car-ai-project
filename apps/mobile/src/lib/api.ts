@@ -1,5 +1,5 @@
 import * as SecureStore from "expo-secure-store";
-import type { Garage, Maintenance, OwnerHints, PartPrices, Tokens, Vehicle } from "./types";
+import type { Garage, Maintenance, OwnerHints, PartPrices, Report, Tokens, Vehicle, VehicleEvent } from "./types";
 
 /** Set EXPO_PUBLIC_API_URL in apps/mobile/.env (use your PC's LAN IP on a real phone). */
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3100/v1";
@@ -40,7 +40,9 @@ async function clearTokens() {
 }
 
 async function rawRequest(path: string, init: RequestInit = {}): Promise<Response> {
-  const headers: Record<string, string> = { "content-type": "application/json" };
+  // Only announce JSON when there is a body: the API rejects an empty JSON body
+  // (DELETE requests would fail with 400).
+  const headers: Record<string, string> = init.body !== undefined ? { "content-type": "application/json" } : {};
   if (accessToken) headers.authorization = `Bearer ${accessToken}`;
   return fetch(`${API_URL}${path}`, { ...init, headers: { ...headers, ...(init.headers as object) } });
 }
@@ -117,11 +119,15 @@ export const api = {
     request<PartPrices>(`/vehicles/${id}/maintenance/${encodeURIComponent(itemId)}/prices`),
   getGarages: (lat: number, lon: number) =>
     request<{ garages: Garage[] }>(`/garages?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`),
-  markMaintenanceDone: (id: string, itemId: string, km?: number) =>
-    request<void>(`/vehicles/${id}/maintenance/${encodeURIComponent(itemId)}/done`, {
+  markMaintenanceDone: (id: string, itemId: string, input: { km?: number; costTnd?: number }) =>
+    request<{ ok: true; recordId: string }>(`/vehicles/${id}/maintenance/${encodeURIComponent(itemId)}/done`, {
       method: "POST",
-      body: JSON.stringify(km === undefined ? {} : { km }),
+      body: JSON.stringify(input),
     }),
+  undoMaintenance: (id: string, recordId: string) =>
+    request<void>(`/vehicles/${id}/maintenance/records/${recordId}`, { method: "DELETE" }),
+  getHistory: (id: string) => request<{ events: VehicleEvent[] }>(`/vehicles/${id}/history`),
+  getReport: (id: string) => request<Report>(`/vehicles/${id}/report`),
   updateVehicle: (id: string, input: { nickname?: string; color?: string; mileageKm?: number }) =>
     request<Vehicle>(`/vehicles/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   researchAgain: (id: string, hints: OwnerHints) =>

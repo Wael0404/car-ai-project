@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Animated, Easing, StyleSheet, View } from "react-native";
+import { useReduceMotion } from "@/lib/motion";
 import Svg, { Circle, G, Path, Rect } from "react-native-svg";
 import { Button, Txt } from "@/components/ui";
 import { radius, space, useTheme } from "@/lib/theme";
@@ -14,8 +15,10 @@ export function Robot({ size = 72, mood = "happy" }: { size?: number; mood?: Rob
   const t = useTheme();
   const [float] = useState(() => new Animated.Value(0));
   const [blink, setBlink] = useState(false);
+  const reduceMotion = useReduceMotion();
 
   useEffect(() => {
+    if (reduceMotion) return; // decorative only: stay still when asked
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(float, { toValue: 1, duration: 1400, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
@@ -31,7 +34,7 @@ export function Robot({ size = 72, mood = "happy" }: { size?: number; mood?: Rob
       loop.stop();
       clearInterval(timer);
     };
-  }, [float]);
+  }, [float, reduceMotion]);
 
   const translateY = float.interpolate({ inputRange: [0, 1], outputRange: [0, -size * 0.06] });
   const body = t.primary;

@@ -150,3 +150,26 @@ export interface Garage {
   address: string | null;
   openingHours: string | null;
 }
+
+export interface VehicleEvent {
+  id: string;
+  type:
+    | "vehicle_added"
+    | "analysis_ready"
+    | "mileage_updated"
+    | "maintenance_done"
+    | "maintenance_undone"
+    | "color_changed"
+    | "nickname_changed"
+    | "info_corrected";
+  data: Record<string, unknown> | null;
+  date: string;
+}
+
+export interface Report {
+  totals: { spentTnd: number; servicesDone: number; avgKmPerMonth: number | null; lastMileageKm: number | null };
+  mileage: Array<{ date: string; km: number }>;
+  spendByMonth: Array<{ month: string; totalTnd: number }>;
+  spendByCategory: Array<{ category: string; totalTnd: number; count: number }>;
+  records: Array<{ id: string; itemId: string; itemName: string | null; category: string | null; km: number; costTnd: number | null; date: string }>;
+}

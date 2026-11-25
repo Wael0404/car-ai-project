@@ -3,17 +3,33 @@ import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
+import { DoneSheet } from "@/components/DoneSheet";
+import { RobotGuide } from "@/components/Robot";
 import { Button, Card, Field, Pill, SectionTitle, Skeleton, Txt, type IconName } from "@/components/ui";
 import { dateFr, km } from "@/lib/format";
 import { font, radius, space, useTheme } from "@/lib/theme";
 import type { Maintenance, MaintenanceItem } from "@/lib/types";
-import { useMarkMaintenanceDone, useUpdateVehicle } from "@/lib/vehicles";
+import { useUpdateVehicle } from "@/lib/vehicles";
 
 const ACTION: Record<MaintenanceItem["action"], string> = {
   remplacer: "Remplacer",
   controler: "Contrôler",
   vidanger: "Vidanger",
   nettoyer: "Nettoyer",
+};
+
+export const CATEGORY_LABEL: Record<string, string> = {
+  moteur: "Moteur",
+  filtres: "Filtres",
+  distribution: "Distribution",
+  allumage: "Allumage",
+  freinage: "Freinage",
+  refroidissement: "Refroidissement",
+  transmission: "Transmission",
+  pneus: "Pneus",
+  climatisation: "Climatisation",
+  electricite: "Électricité",
+  autre: "Autre",
 };
 
 export const CATEGORY_ICON: Record<string, IconName> = {
@@ -55,9 +71,9 @@ function interval(item: MaintenanceItem): string {
 const openItem = (vehicleId: string, itemId: string) =>
   router.push({ pathname: "/maintenance/[vehicleId]/[itemId]", params: { vehicleId, itemId } });
 
-function ItemCard({ item, vehicleId }: { item: MaintenanceItem; vehicleId: string }) {
+function ItemCard({ item, vehicleId, mileageKm }: { item: MaintenanceItem; vehicleId: string; mileageKm: number | null }) {
   const t = useTheme();
-  const done = useMarkMaintenanceDone(vehicleId);
+  const [asking, setAsking] = useState(false);
   const tone = item.status === "overdue" ? t.danger : item.status === "soon" ? t.warning : t.success;
   const soft = item.status === "overdue" ? t.dangerSoft : item.status === "soon" ? t.warningSoft : t.successSoft;
 
@@ -94,21 +110,12 @@ function ItemCard({ item, vehicleId }: { item: MaintenanceItem; vehicleId: strin
           <Button label="Prix et garages" icon="pricetags-outline" variant="secondary" size="md" onPress={() => openItem(vehicleId, item.id)} />
         </View>
         <View style={{ flex: 1 }}>
-          <Button
-            label="C'est fait"
-            icon="checkmark-done-outline"
-            variant="ghost"
-            size="md"
-            loading={done.isPending}
-            onPress={() =>
-              done.mutate(
-                { itemId: item.id },
-                { onSuccess: () => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}) },
-              )
-            }
-          />
+          <Button label="C'est fait" icon="checkmark-done-outline" variant="ghost" size="md" onPress={() => setAsking(true)} />
         </View>
       </View>
+      {asking ? (
+        <DoneSheet vehicleId={vehicleId} itemId={item.id} itemName={item.name} currentKm={mileageKm} onClose={() => setAsking(false)} />
+      ) : null}
     </Card>
   );
 }
@@ -169,6 +176,12 @@ function MileageCard({ vehicleId, mileageKm }: { vehicleId: string; mileageKm: n
           )
         }
       />
+      {update.error ? (
+        <Txt tone="danger" accessibilityLiveRegion="polite">
+          Pas enregistré : {update.error.message}
+        </Txt>
+      ) : null}
+      {mileageKm !== null ? <Button label="Annuler" variant="ghost" size="md" onPress={() => setEditing(false)} /> : null}
     </Card>
   );
 }
@@ -184,11 +197,15 @@ export function MaintenanceSection({
   mileageKm,
   data,
   loading,
+  error,
+  onRetry,
 }: {
   vehicleId: string;
   mileageKm: number | null;
   data: Maintenance | undefined;
   loading: boolean;
+  error?: Error | null;
+  onRetry?: () => void;
 }) {
   const [showLater, setShowLater] = useState(false);
   const items = data?.items ?? [];
@@ -198,15 +215,20 @@ export function MaintenanceSection({
     <View style={{ gap: space.lg }}>
       <MileageCard key={String(mileageKm)} vehicleId={vehicleId} mileageKm={mileageKm} />
 
-      {loading || data?.status === "PENDING" ? (
+      {error && !data ? (
+        <RobotGuide mood="alert" title="Connexion impossible" action={onRetry ? { label: "Réessayer", onPress: onRetry } : undefined}>
+          Je n'arrive pas à charger le plan d'entretien. Vérifiez votre connexion internet.
+        </RobotGuide>
+      ) : loading || data?.status === "PENDING" ? (
         <View style={{ gap: space.md }}>
           <Skeleton height={110} />
           <Skeleton height={110} />
         </View>
       ) : data?.status === "FAILED" ? (
-        <Card>
-          <Txt tone="muted">Le plan d'entretien n'a pas pu être établi pour cette voiture.</Txt>
-        </Card>
+        <RobotGuide mood="alert" title="Plan d'entretien indisponible">
+          Je n'ai pas trouvé de programme d'entretien fiable pour cette version. Vérifiez les infos dans l'onglet Réglages,
+          puis relancez la recherche.
+        </RobotGuide>
       ) : mileageKm === null ? null : (
         <>
           <View style={{ flexDirection: "row", gap: space.sm, flexWrap: "wrap" }}>
@@ -234,7 +256,7 @@ export function MaintenanceSection({
                 >
                   {g.title} ({list.length})
                 </SectionTitle>
-                {!hidden && list.map((i) => <ItemCard key={i.id} item={i} vehicleId={vehicleId} />)}
+                {!hidden && list.map((i) => <ItemCard key={i.id} item={i} vehicleId={vehicleId} mileageKm={mileageKm} />)}
               </View>
             );
           })}

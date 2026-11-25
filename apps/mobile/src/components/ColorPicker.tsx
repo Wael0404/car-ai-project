@@ -34,8 +34,9 @@ export function ColorPicker({ value, onChange }: { value: string; onChange: (hex
                 height: 44,
                 borderRadius: 22,
                 backgroundColor: c.hex,
-                borderWidth: active ? 3 : 1,
-                borderColor: active ? t.primary : t.border,
+                // White/silver swatches must stay visible on a white card.
+                borderWidth: active ? 3 : 1.5,
+                borderColor: active ? t.primary : t.inputBorder,
                 alignItems: "center",
                 justifyContent: "center",
               }}

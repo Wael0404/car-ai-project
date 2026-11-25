@@ -23,6 +23,7 @@ import { ensureModel3D, runModel3DSearch } from "./model3dJobs.js";
 import { ensureMaintenancePlan, runMaintenancePlan } from "./maintenanceJobs.js";
 import { runPriceLookup } from "./priceJobs.js";
 import { findReusableProfile } from "./lib/specReuse.js";
+import { logEventForVin } from "./lib/history.js";
 import { createQueueConnection } from "./lib/redis.js";
 
 const log = pino({ name: "vin-worker" });
@@ -43,6 +44,7 @@ const worker = new Worker<VinJobData>(
         data: { status: "READY", make: p.make, model: p.model, modelYear: p.modelYear, bodyType: p.bodyType, data: reused, error: null },
       });
       log.info({ vin, make: p.make, model: p.model }, "Profile reused from same type code (no AI cost)");
+      await logEventForVin(vin, "analysis_ready", { make: p.make, model: p.model });
       await ensureModel3D(p, log);
       await ensureMaintenancePlan(p, log);
       return;
@@ -66,6 +68,7 @@ const worker = new Worker<VinJobData>(
         },
       });
       log.info({ vin, make: profile.make, model: profile.model }, "VIN researched");
+      await logEventForVin(vin, "analysis_ready", { make: profile.make, model: profile.model });
       await ensureModel3D(profile, log);
       await ensureMaintenancePlan(profile, log);
     } catch (err) {

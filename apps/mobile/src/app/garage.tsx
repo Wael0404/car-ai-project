@@ -5,7 +5,6 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { RequireAuth } from "@/components/RequireAuth";
 import { RobotGuide } from "@/components/Robot";
 import { Button, Card, IconButton, Pill, Skeleton, Txt } from "@/components/ui";
-import { useAuth } from "@/lib/auth";
 import { vehicleTitle } from "@/lib/format";
 import { radius, space, useTheme } from "@/lib/theme";
 import type { Vehicle } from "@/lib/types";
@@ -67,7 +66,6 @@ function VehicleCard({ v }: { v: Vehicle }) {
 
 function GarageList() {
   const t = useTheme();
-  const { signOut } = useAuth();
   const insets = useSafeAreaInsets();
   const { data, isLoading, isRefetching, refetch, error } = useVehicles();
   const cars = data ?? [];
@@ -105,7 +103,7 @@ function GarageList() {
           </Txt>
           <Txt variant="display">Mes voitures</Txt>
         </View>
-        <IconButton icon="log-out-outline" label="Se déconnecter" onPress={signOut} />
+        <IconButton icon="settings-outline" label="Paramètres : apparence et compte" onPress={() => router.push("/settings")} />
       </View>
 
       {isLoading ? (

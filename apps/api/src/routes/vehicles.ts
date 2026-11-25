@@ -4,6 +4,7 @@ import { prisma } from "../lib/db.js";
 import { modelKey, resolveModel3D, type CatalogRow } from "../lib/model3d.js";
 import { enqueueVinResearch } from "../lib/queue.js";
 import { normalizeCode } from "../lib/specReuse.js";
+import { buildReport, logEvent } from "../lib/history.js";
 import { computeDue, parseRegistrationDate, type PlanItem } from "../lib/maintenance.js";
 import { maintenanceKey } from "../maintenanceJobs.js";
 import { getOrQueuePrices } from "../priceJobs.js";
@@ -40,7 +41,12 @@ const UpdateVehicleBody = z.object({
   mileageKm: z.number().int().min(0).max(2_000_000).optional(),
 });
 const ItemParams = IdParamsShape().extend({ itemId: z.string().min(1).max(60) });
-const DoneBody = z.object({ km: z.number().int().min(0).max(2_000_000).optional() });
+const DoneBody = z.object({
+  km: z.number().int().min(0).max(2_000_000).optional(),
+  costTnd: z.number().min(0).max(1_000_000).optional(),
+  note: z.string().trim().max(300).optional(),
+});
+const RecordParams = IdParamsShape().extend({ recordId: z.uuid() });
 
 function IdParamsShape() {
   return z.object({ id: z.uuid() });
@@ -186,6 +192,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
         },
         include: { spec: true },
       });
+      await logEvent(vehicle.id, "vehicle_added", { vin, nickname: vehicle.nickname, color: vehicle.color });
       return reply.code(201).send(toDto(vehicle, await loadCatalog([vehicle])));
     } catch (err) {
       if ((err as { code?: string }).code === "P2002") {
@@ -198,9 +205,21 @@ export async function vehicleRoutes(app: FastifyInstance) {
   app.patch("/vehicles/:id", async (req, reply) => {
     const { id } = IdParams.parse(req.params);
     const body = UpdateVehicleBody.parse(req.body);
+    const before = await prisma.vehicle.findFirst({ where: { id, userId: req.user.sub } });
+    if (!before) return reply.code(404).send({ error: "Véhicule introuvable." });
     const data = body.mileageKm === undefined ? body : { ...body, mileageUpdatedAt: new Date() };
-    const { count } = await prisma.vehicle.updateMany({ where: { id, userId: req.user.sub }, data });
-    if (count === 0) return reply.code(404).send({ error: "Véhicule introuvable." });
+    await prisma.vehicle.update({ where: { id }, data });
+
+    // History: one entry per real change.
+    if (body.mileageKm !== undefined && body.mileageKm !== before.mileageKm) {
+      await logEvent(id, "mileage_updated", { fromKm: before.mileageKm, toKm: body.mileageKm });
+    }
+    if (body.color !== undefined && body.color !== before.color) {
+      await logEvent(id, "color_changed", { from: before.color, to: body.color });
+    }
+    if (body.nickname !== undefined && body.nickname !== before.nickname) {
+      await logEvent(id, "nickname_changed", { from: before.nickname, to: body.nickname });
+    }
     const vehicle = await prisma.vehicle.findUniqueOrThrow({ where: { id }, include: { spec: true } });
     return toDto(vehicle, await loadCatalog([vehicle]));
   });
@@ -236,6 +255,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
       });
       await prisma.vehicleSpec.update({ where: { vin: vehicle.vin }, data: { status: "PENDING", error: null } });
       await enqueueVinResearch(vehicle.vin, hints);
+      await logEvent(id, "info_corrected", { ...hints });
       return reply.code(202).send({ ok: true });
     },
   );
@@ -307,15 +327,75 @@ export async function vehicleRoutes(app: FastifyInstance) {
   /** Marks a maintenance item as done (at the given km, default: current mileage). */
   app.post("/vehicles/:id/maintenance/:itemId/done", async (req, reply) => {
     const { id, itemId } = ItemParams.parse(req.params);
-    const { km } = DoneBody.parse(req.body ?? {});
-    const vehicle = await prisma.vehicle.findFirst({ where: { id, userId: req.user.sub } });
+    const { km, costTnd, note } = DoneBody.parse(req.body ?? {});
+    const vehicle = await prisma.vehicle.findFirst({ where: { id, userId: req.user.sub }, include: { spec: true } });
     if (!vehicle) return reply.code(404).send({ error: "Véhicule introuvable." });
     const doneAtKm = km ?? vehicle.mileageKm;
     if (doneAtKm === null || doneAtKm === undefined) {
       return reply.code(400).send({ error: "Indiquez d'abord le kilométrage de la voiture." });
     }
-    await prisma.maintenanceRecord.create({ data: { vehicleId: id, itemId, doneAtKm } });
-    return reply.code(201).send({ ok: true });
+    // Keep the item name in the record so the history stays readable.
+    const profile = vehicle.spec.data as unknown as VehicleProfile | null;
+    const planKey = profile ? maintenanceKey(profile) : null;
+    const plan = planKey ? await prisma.maintenancePlan.findUnique({ where: { key: planKey } }) : null;
+    const item = Array.isArray(plan?.items) ? (plan!.items as unknown as PlanItem[]).find((i) => i.id === itemId) : undefined;
+
+    const record = await prisma.maintenanceRecord.create({
+      data: {
+        vehicleId: id,
+        itemId,
+        itemName: item?.name ?? null,
+        category: item?.category ?? null,
+        doneAtKm,
+        costTnd: costTnd ?? null,
+        note: note || null,
+      },
+    });
+    await logEvent(id, "maintenance_done", {
+      recordId: record.id,
+      itemId,
+      itemName: item?.name ?? itemId,
+      category: item?.category ?? null,
+      km: doneAtKm,
+      costTnd: costTnd ?? null,
+    });
+    // Doing a service at a higher km also tells us the current mileage.
+    if (vehicle.mileageKm === null || doneAtKm > vehicle.mileageKm) {
+      await prisma.vehicle.update({ where: { id }, data: { mileageKm: doneAtKm, mileageUpdatedAt: new Date() } });
+      await logEvent(id, "mileage_updated", { fromKm: vehicle.mileageKm, toKm: doneAtKm });
+    }
+    return reply.code(201).send({ ok: true, recordId: record.id });
+  });
+
+  /** Undo a "done" mark (wrong item, wrong km...). Kept in the history. */
+  app.delete("/vehicles/:id/maintenance/records/:recordId", async (req, reply) => {
+    const { id, recordId } = RecordParams.parse(req.params);
+    const record = await prisma.maintenanceRecord.findFirst({ where: { id: recordId, vehicle: { id, userId: req.user.sub } } });
+    if (!record) return reply.code(404).send({ error: "Entretien introuvable." });
+    await prisma.maintenanceRecord.delete({ where: { id: recordId } });
+    await logEvent(id, "maintenance_undone", { recordId, itemId: record.itemId, itemName: record.itemName, km: record.doneAtKm });
+    return reply.code(204).send();
+  });
+
+  /** Everything that happened to this car, newest first. */
+  app.get("/vehicles/:id/history", async (req, reply) => {
+    const { id } = IdParams.parse(req.params);
+    const vehicle = await prisma.vehicle.findFirst({ where: { id, userId: req.user.sub }, select: { id: true } });
+    if (!vehicle) return reply.code(404).send({ error: "Véhicule introuvable." });
+    const events = await prisma.vehicleEvent.findMany({ where: { vehicleId: id }, orderBy: { createdAt: "desc" }, take: 200 });
+    return { events: events.map((e) => ({ id: e.id, type: e.type, data: e.data, date: e.createdAt.toISOString() })) };
+  });
+
+  /** Report for charts: mileage over time, spending per month and category, totals. */
+  app.get("/vehicles/:id/report", async (req, reply) => {
+    const { id } = IdParams.parse(req.params);
+    const vehicle = await prisma.vehicle.findFirst({ where: { id, userId: req.user.sub }, select: { id: true } });
+    if (!vehicle) return reply.code(404).send({ error: "Véhicule introuvable." });
+    const [records, mileageEvents] = await Promise.all([
+      prisma.maintenanceRecord.findMany({ where: { vehicleId: id } }),
+      prisma.vehicleEvent.findMany({ where: { vehicleId: id, type: "mileage_updated" }, select: { createdAt: true, data: true } }),
+    ]);
+    return buildReport(records, mileageEvents);
   });
 
   app.delete("/vehicles/:id", async (req, reply) => {

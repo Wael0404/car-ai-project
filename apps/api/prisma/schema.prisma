@@ -51,6 +51,7 @@ model Vehicle {
   mileageKm         Int?
   mileageUpdatedAt  DateTime?
   maintenanceRecords MaintenanceRecord[]
+  events            VehicleEvent[]
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
@@ -152,7 +153,13 @@ model MaintenanceRecord {
   vehicleId String   @db.Uuid
   vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   itemId    String   @db.VarChar(60)
+  /// Snapshot of the item name and category, so history stays readable.
+  itemName  String?  @db.VarChar(120)
+  category  String?  @db.VarChar(30)
   doneAtKm  Int
+  /// What the owner paid (parts + labour), optional, for spending reports.
+  costTnd   Float?
+  note      String?  @db.VarChar(300)
   doneAt    DateTime @default(now())
 
   @@index([vehicleId, itemId])
@@ -175,4 +182,19 @@ model PartPrices {
   updatedAt DateTime   @updatedAt
 
   @@index([status])
+}
+
+/// Every change an owner makes to a car (and when its analysis finished):
+/// the history of the car, shown as a timeline and used for reports.
+model VehicleEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  vehicleId String   @db.Uuid
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  /// vehicle_added, analysis_ready, mileage_updated, maintenance_done,
+  /// maintenance_undone, color_changed, nickname_changed, info_corrected
+  type      String   @db.VarChar(40)
+  data      Json?
+  createdAt DateTime @default(now())
+
+  @@index([vehicleId, createdAt])
 }

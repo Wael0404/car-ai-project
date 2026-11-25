@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useRef, useState } from "react";
-import { FlatList, Pressable, View, useWindowDimensions } from "react-native";
+import { FlatList, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Robot, type RobotMood } from "@/components/Robot";
 import { Button, Txt, type IconName } from "@/components/ui";
@@ -71,7 +71,12 @@ export default function Welcome() {
         keyExtractor={(s) => s.title}
         onMomentumScrollEnd={(e) => setIndex(Math.round(e.nativeEvent.contentOffset.x / width))}
         renderItem={({ item }) => (
-          <View style={{ width, paddingHorizontal: space.xl, justifyContent: "center", gap: space.xl }}>
+          // Vertical scroll inside each slide: nothing is cut with large text sizes.
+          <ScrollView
+            style={{ width }}
+            contentContainerStyle={{ flexGrow: 1, paddingHorizontal: space.xl, paddingVertical: space.lg, justifyContent: "center", gap: space.xl }}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={{ alignItems: "center" }}>
               <View style={{ padding: space.xl, borderRadius: 999, backgroundColor: t.primarySoft }}>
                 <Robot size={150} mood={item.mood} />
@@ -95,7 +100,7 @@ export default function Welcome() {
                 </View>
               ))}
             </View>
-          </View>
+          </ScrollView>
         )}
       />
 

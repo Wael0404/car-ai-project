@@ -44,8 +44,13 @@ function AddVehicleForm() {
   const normalized = normalizeVin(vin);
   const localError = vinError(vin);
   const vinReady = normalized.length === 17 && !localError;
-  const serverError =
-    add.error instanceof ApiError ? add.error.message : add.error ? "Impossible de joindre le serveur. Vérifiez votre connexion." : null;
+  // A 4xx answer is about the VIN (invalid, already added): fix it on step 1.
+  const vinProblem = add.error instanceof ApiError && add.error.status < 500;
+  const serverError = add.error
+    ? vinProblem
+      ? add.error.message
+      : "Impossible de joindre le serveur. Vérifiez votre connexion, puis réessayez."
+    : null;
 
   function submit() {
     add.mutate(
@@ -55,8 +60,11 @@ function AddVehicleForm() {
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
           router.replace({ pathname: "/vehicle/[id]", params: { id: vehicle.id } });
         },
-        // A VIN problem is shown on the first step, where it can be fixed.
-        onError: () => setStep(0),
+        // Only a VIN problem sends the owner back to the first step; a network
+        // error stays here so a retry is one tap.
+        onError: (err) => {
+          if (err instanceof ApiError && err.status < 500) setStep(0);
+        },
       },
     );
   }
@@ -77,13 +85,17 @@ function AddVehicleForm() {
                 label="Numéro VIN"
                 icon="finger-print-outline"
                 value={vin}
-                onChangeText={(v) => setVin(v.toUpperCase())}
+                onChangeText={(v) => {
+                  setVin(v.toUpperCase());
+                  if (add.error) add.reset(); // the old server error no longer applies
+                }}
+                accessibilityHint="17 caractères, case E de la carte grise"
                 placeholder="ZFA31200003E60330"
                 autoCapitalize="characters"
                 autoCorrect={false}
                 autoFocus
                 maxLength={21}
-                error={localError && normalized.length >= 17 ? localError : serverError}
+                error={localError && normalized.length >= 17 ? localError : vinProblem ? serverError : null}
                 helper={localError && normalized.length < 17 ? localError : vinReady ? "Format correct" : undefined}
                 style={{ letterSpacing: 1.5, fontVariant: ["tabular-nums"] }}
               />
@@ -109,7 +121,20 @@ function AddVehicleForm() {
                 <Txt variant="bodyStrong">Couleur</Txt>
                 <ColorPicker value={color} onChange={setColor} />
               </View>
-              <Field label="Surnom (facultatif)" icon="pricetag-outline" value={nickname} onChangeText={setNickname} placeholder="Ma Panda" maxLength={60} />
+              <Field
+                label="Surnom (facultatif)"
+                icon="pricetag-outline"
+                value={nickname}
+                onChangeText={setNickname}
+                placeholder="Ma Panda"
+                maxLength={60}
+                accessibilityHint="Nom affiché à la place de la marque et du modèle"
+              />
+              {serverError && !vinProblem ? (
+                <Txt tone="danger" accessibilityLiveRegion="polite">
+                  {serverError}
+                </Txt>
+              ) : null}
             </>
           )}
         </ScrollView>
@@ -123,7 +148,7 @@ function AddVehicleForm() {
             </>
           )}
           {step === 2 && <Button label="Ajouter ma voiture" icon="checkmark-circle-outline" onPress={submit} loading={add.isPending} />}
-          {step > 0 && <Button label="Retour" variant="ghost" size="md" onPress={() => setStep(step - 1)} />}
+          {step > 0 && !add.isPending && <Button label="Retour" variant="ghost" size="md" onPress={() => setStep(step - 1)} />}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

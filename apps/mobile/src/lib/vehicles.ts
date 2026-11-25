@@ -43,7 +43,7 @@ export function useUpdateVehicle(id: string) {
     onSuccess: (vehicle) => {
       qc.setQueryData(["vehicles", id], vehicle);
       void qc.invalidateQueries({ queryKey: ["vehicles"], exact: true });
-      void qc.invalidateQueries({ queryKey: ["maintenance", id] });
+      void invalidateCar(qc, id);
     },
   });
 }
@@ -77,8 +77,9 @@ export function useMaintenance(id: string, enabled: boolean) {
 export function useMarkMaintenanceDone(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ itemId, km }: { itemId: string; km?: number }) => api.markMaintenanceDone(id, itemId, km),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["maintenance", id] }),
+    mutationFn: ({ itemId, km, costTnd }: { itemId: string; km?: number; costTnd?: number }) =>
+      api.markMaintenanceDone(id, itemId, { km, costTnd }),
+    onSuccess: () => invalidateCar(qc, id),
   });
 }
 
@@ -97,5 +98,31 @@ export function useGarages(coords: { lat: number; lon: number } | null) {
     queryFn: () => api.getGarages(coords!.lat, coords!.lon),
     enabled: coords !== null,
     staleTime: 3600_000,
+  });
+}
+
+/** Everything derived from a car's history must refresh after a change. */
+function invalidateCar(qc: ReturnType<typeof useQueryClient>, id: string) {
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: ["maintenance", id] }),
+    qc.invalidateQueries({ queryKey: ["history", id] }),
+    qc.invalidateQueries({ queryKey: ["report", id] }),
+    qc.invalidateQueries({ queryKey: ["vehicles", id] }),
+  ]);
+}
+
+export function useHistory(id: string) {
+  return useQuery({ queryKey: ["history", id], queryFn: () => api.getHistory(id) });
+}
+
+export function useReport(id: string) {
+  return useQuery({ queryKey: ["report", id], queryFn: () => api.getReport(id) });
+}
+
+export function useUndoMaintenance(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (recordId: string) => api.undoMaintenance(id, recordId),
+    onSuccess: () => invalidateCar(qc, id),
   });
 }

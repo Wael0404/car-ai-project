@@ -16,6 +16,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from "react-native";
+import { useReduceMotion } from "@/lib/motion";
 import { radius, space, type, useTheme } from "@/lib/theme";
 
 export type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -193,7 +194,7 @@ export function Field({
 }: TextInputProps & { label: string; error?: string | null; helper?: string; icon?: IconName }) {
   const t = useTheme();
   const [focused, setFocused] = useState(false);
-  const borderColor = error ? t.danger : focused ? t.primary : t.border;
+  const borderColor = error ? t.danger : focused ? t.primary : t.inputBorder;
   return (
     <View style={{ gap: 6 }}>
       <Txt variant="caption" style={{ fontFamily: type.bodyStrong.fontFamily }}>
@@ -293,7 +294,14 @@ export function Segmented<T extends string>({
             style={[styles.segment, active && { backgroundColor: t.card, shadowColor: t.shadow, ...styles.segmentActive }]}
           >
             {o.icon ? <Ionicons name={o.icon} size={16} color={active ? t.primary : t.muted} /> : null}
-            <Text style={[type.caption, { color: active ? t.text : t.muted, fontFamily: type.bodyStrong.fontFamily }]}>{o.label}</Text>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              style={[type.caption, { color: active ? t.text : t.muted, fontFamily: type.bodyStrong.fontFamily }]}
+            >
+              {o.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -304,8 +312,10 @@ export function Segmented<T extends string>({
 /** Placeholder block while content loads (better than a lone spinner). */
 export function Skeleton({ height = 16, width = "100%", style }: { height?: number; width?: ViewStyle["width"]; style?: StyleProp<ViewStyle> }) {
   const t = useTheme();
-  const [opacity] = useState(() => new Animated.Value(0.5));
+  const reduceMotion = useReduceMotion();
+  const [opacity] = useState(() => new Animated.Value(0.7));
   useEffect(() => {
+    if (reduceMotion) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(opacity, { toValue: 1, duration: 700, useNativeDriver: true }),
@@ -314,7 +324,7 @@ export function Skeleton({ height = 16, width = "100%", style }: { height?: numb
     );
     loop.start();
     return () => loop.stop();
-  }, [opacity]);
+  }, [opacity, reduceMotion]);
   return <Animated.View style={[{ height, width, borderRadius: radius.sm, backgroundColor: t.surface2, opacity }, style]} />;
 }
 
@@ -381,7 +391,8 @@ const styles = StyleSheet.create({
   segmented: { flexDirection: "row", borderRadius: radius.md, padding: 4, gap: 4 },
   segment: {
     flex: 1,
-    minHeight: 40,
+    minHeight: 48,
+    paddingHorizontal: 2,
     borderRadius: radius.sm,
     flexDirection: "row",
     gap: 6,

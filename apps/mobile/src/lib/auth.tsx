@@ -33,9 +33,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    await api.logout();
-    queryClient.clear(); // never show the previous user's cars
-    setStatus("signedOut");
+    try {
+      await api.logout(); // best effort: works offline too
+    } finally {
+      queryClient.clear(); // never show the previous user's cars
+      setStatus("signedOut");
+    }
   }, [queryClient]);
 
   const value = useMemo(() => ({ status, signIn, signOut }), [status, signIn, signOut]);

@@ -1,3 +1,4 @@
+import { createContext, useContext } from "react";
 import { useColorScheme } from "react-native";
 
 /**
@@ -11,17 +12,22 @@ const light = {
   text: "#0E1726",
   muted: "#5A6778",
   border: "#DFE6EE",
-  primary: "#0A8F86",
+  /** Unfocused input outline: must be visible (>= 3:1). */
+  inputBorder: "#7D8A9B",
+  primary: "#06756E",
   primarySoft: "#DDF4F1",
   primaryText: "#FFFFFF",
-  danger: "#D93A3A",
+  danger: "#C42F2F",
   dangerSoft: "#FDE8E8",
-  warning: "#B86E00",
+  warning: "#8F5400",
   warningSoft: "#FFF1DB",
-  success: "#1E8A54",
+  success: "#16733F",
   successSoft: "#E1F5EA",
   shadow: "#0E1726",
   overlay: "rgba(14,23,38,0.55)",
+  /** Single-series chart marks (validated: lightness band, chroma, 3:1). */
+  chart: "#0d9488",
+  grid: "#E6EBF1",
 };
 
 const dark: typeof light = {
@@ -31,6 +37,7 @@ const dark: typeof light = {
   text: "#EBF0F6",
   muted: "#93A0B1",
   border: "#232E3C",
+  inputBorder: "#5C6B80",
   primary: "#2CC8B9",
   primarySoft: "#0F302E",
   primaryText: "#04211F",
@@ -42,12 +49,33 @@ const dark: typeof light = {
   successSoft: "#113221",
   shadow: "#000000",
   overlay: "rgba(0,0,0,0.6)",
+  chart: "#1aa89a",
+  grid: "#1F2936",
 };
 
 export type Theme = typeof light;
 
+/** The owner can force light or dark, or follow the phone ("system"). */
+export type ThemePreference = "system" | "light" | "dark";
+
+export const ThemePreferenceContext = createContext<{
+  preference: ThemePreference;
+  setPreference: (p: ThemePreference) => void;
+}>({ preference: "system", setPreference: () => {} });
+
+export function useThemePreference() {
+  return useContext(ThemePreferenceContext);
+}
+
+export function useColorMode(): "light" | "dark" {
+  const system = useColorScheme();
+  const { preference } = useContext(ThemePreferenceContext);
+  if (preference === "system") return system === "dark" ? "dark" : "light";
+  return preference;
+}
+
 export function useTheme(): Theme {
-  return useColorScheme() === "dark" ? dark : light;
+  return useColorMode() === "dark" ? dark : light;
 }
 
 /** Inter, loaded in the root layout. */

@@ -174,21 +174,46 @@ function ItemScreen({ vehicleId, itemId }: { vehicleId: string; itemId: string }
   const t = useTheme();
   const prices = usePartPrices(vehicleId, itemId);
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
-  const [locationDenied, setLocationDenied] = useState(false);
+  // "ask": not asked yet, explain first; "locating": permission given; "denied": refused.
+  const [location, setLocation] = useState<"ask" | "locating" | "denied" | "blocked">("ask");
   const garages = useGarages(coords);
 
-  useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        setLocationDenied(true);
-        return;
-      }
-      const pos = (await Location.getLastKnownPositionAsync()) ?? (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
+  async function locate() {
+    setLocation("locating");
+    try {
+      const pos =
+        (await Location.getLastKnownPositionAsync()) ?? (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
       if (pos) setCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude });
-    })().catch(() => setLocationDenied(true));
+      else setLocation("denied");
+    } catch {
+      setLocation("denied");
+    }
+  }
+
+  async function askLocation() {
+    const res = await Location.requestForegroundPermissionsAsync().catch(() => null);
+    if (res?.status === "granted") return locate();
+    setLocation(res && !res.canAskAgain ? "blocked" : "denied");
+  }
+
+  // Already allowed earlier: no need to ask again, locate straight away.
+  useEffect(() => {
+    Location.getForegroundPermissionsAsync()
+      .then((p) => {
+        if (p.status === "granted") void locate();
+      })
+      .catch(() => {});
   }, []);
 
+  if (!prices.data && prices.error) {
+    return (
+      <Screen>
+        <RobotGuide mood="alert" title="Connexion impossible" action={{ label: "Réessayer", onPress: () => void prices.refetch() }}>
+          Je n'arrive pas à charger les prix. Vérifiez votre connexion internet.
+        </RobotGuide>
+      </Screen>
+    );
+  }
   if (prices.isLoading || !prices.data) {
     return (
       <Screen>
@@ -234,9 +259,31 @@ function ItemScreen({ vehicleId, itemId }: { vehicleId: string; itemId: string }
         Recherche « {query} » autour de vous, avec avis, horaires et téléphones.
       </Txt>
 
-      {locationDenied ? (
-        <Card>
-          <Txt tone="muted">Autorisez la localisation dans les réglages du téléphone pour voir aussi les garages proches ici.</Txt>
+      {location === "ask" && !coords ? (
+        <Card style={{ gap: space.md }}>
+          <View style={{ flexDirection: "row", gap: space.md, alignItems: "flex-start" }}>
+            <Ionicons name="location-outline" size={22} color={t.primary} />
+            <Txt style={{ flex: 1 }}>
+              Voulez-vous voir les garages les plus proches ici ? J'utilise votre position une seule fois, elle n'est pas enregistrée.
+            </Txt>
+          </View>
+          <Button label="Utiliser ma position" icon="locate-outline" variant="secondary" size="md" onPress={() => void askLocation()} />
+        </Card>
+      ) : location === "denied" || location === "blocked" ? (
+        <Card style={{ gap: space.md }}>
+          <Txt tone="muted">
+            Sans votre position, je ne peux pas lister les garages proches. Google Maps (au-dessus) fonctionne quand même.
+          </Txt>
+          {location === "blocked" ? (
+            <Button label="Ouvrir les réglages" icon="settings-outline" variant="ghost" size="md" onPress={() => void Linking.openSettings()} />
+          ) : (
+            <Button label="Réessayer" icon="refresh" variant="ghost" size="md" onPress={() => void askLocation()} />
+          )}
+        </Card>
+      ) : garages.error ? (
+        <Card style={{ gap: space.md }}>
+          <Txt tone="muted">La carte des garages ne répond pas pour le moment.</Txt>
+          <Button label="Réessayer" icon="refresh" variant="ghost" size="md" onPress={() => void garages.refetch()} />
         </Card>
       ) : !coords || garages.isLoading ? (
         <Skeleton height={120} />

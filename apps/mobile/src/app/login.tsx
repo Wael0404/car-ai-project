@@ -18,15 +18,18 @@ export default function Login() {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const message = (err: unknown) =>
     err instanceof ApiError ? err.message : "Impossible de joindre le serveur. Vérifiez votre connexion Internet.";
 
   async function sendCode() {
     setError(null);
+    setNotice(null);
     setLoading(true);
     try {
       await api.requestCode(email.trim());
+      if (step === "code") setNotice(`Nouveau code envoyé à ${email.trim()}. Pensez à regarder les spams.`);
       setStep("code");
     } catch (err) {
       setError(message(err));
@@ -111,6 +114,7 @@ export default function Login() {
                     setStep("email");
                     setCode("");
                     setError(null);
+                    setNotice(null);
                   }}
                 >
                   <Txt tone="primary" variant="bodyStrong">
@@ -123,6 +127,11 @@ export default function Login() {
                   </Txt>
                 </Pressable>
               </View>
+              {notice ? (
+                <Txt tone="success" variant="caption" accessibilityLiveRegion="polite" style={{ textAlign: "center" }}>
+                  {notice}
+                </Txt>
+              ) : null}
             </View>
           )}
         </ScrollView>

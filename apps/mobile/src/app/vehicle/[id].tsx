@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Alert, Linking, View } from "react-native";
 import { Car3D } from "@/components/Car3D";
 import { ColorPicker } from "@/components/ColorPicker";
+import { HistorySection } from "@/components/HistorySection";
 import { MaintenanceSection } from "@/components/MaintenanceSection";
 import { cleanHints, OwnerHintsFields } from "@/components/OwnerHintsFields";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -13,7 +14,7 @@ import { space, useTheme } from "@/lib/theme";
 import type { Maintenance, OwnerHints, Vehicle } from "@/lib/types";
 import { useDeleteVehicle, useMaintenance, useResearchAgain, useUpdateVehicle, useVehicle } from "@/lib/vehicles";
 
-type Tab = "entretien" | "fiche" | "reglages";
+type Tab = "entretien" | "historique" | "fiche" | "reglages";
 const CONFIDENCE = { high: "élevée", medium: "moyenne", low: "faible" } as const;
 
 /** What Robi says on this car, depending on where the analysis stands. */
@@ -137,7 +138,15 @@ function Settings({ v, onDeleted }: { v: Vehicle; onDeleted: () => void }) {
   function confirmDelete() {
     Alert.alert("Supprimer cette voiture ?", "Elle sera retirée de votre compte, avec son suivi d'entretien.", [
       { text: "Annuler", style: "cancel" },
-      { text: "Supprimer", style: "destructive", onPress: () => remove.mutate(v.id, { onSuccess: onDeleted }) },
+      {
+        text: "Supprimer",
+        style: "destructive",
+        onPress: () =>
+          remove.mutate(v.id, {
+            onSuccess: onDeleted,
+            onError: (err) => Alert.alert("Suppression impossible", err.message),
+          }),
+      },
     ]);
   }
 
@@ -146,6 +155,7 @@ function Settings({ v, onDeleted }: { v: Vehicle; onDeleted: () => void }) {
       <SectionTitle>Couleur</SectionTitle>
       <Card>
         <ColorPicker value={v.color} onChange={(color) => update.mutate({ color })} />
+        {update.error ? <Txt tone="danger">Couleur non enregistrée : {update.error.message}</Txt> : null}
       </Card>
 
       <SectionTitle>Ce n'est pas ma voiture ?</SectionTitle>
@@ -160,7 +170,15 @@ function Settings({ v, onDeleted }: { v: Vehicle; onDeleted: () => void }) {
           loading={research.isPending}
           onPress={() => research.mutate(cleanHints(hints))}
         />
-        {research.error ? <Txt tone="danger">{research.error.message}</Txt> : null}
+        {research.error ? (
+          <Txt tone="danger" accessibilityLiveRegion="polite">
+            La recherche n'a pas pu être relancée : {research.error.message}
+          </Txt>
+        ) : research.isSuccess ? (
+          <Txt tone="success" accessibilityLiveRegion="polite">
+            C'est parti : je relance l'analyse avec vos informations.
+          </Txt>
+        ) : null}
       </Card>
 
       <Button label="Supprimer cette voiture" icon="trash-outline" variant="danger" onPress={confirmDelete} loading={remove.isPending} />
@@ -170,10 +188,19 @@ function Settings({ v, onDeleted }: { v: Vehicle; onDeleted: () => void }) {
 
 function Dashboard({ id }: { id: string }) {
   const t = useTheme();
-  const { data: v, isLoading } = useVehicle(id);
+  const { data: v, isLoading, error, refetch } = useVehicle(id);
   const maintenance = useMaintenance(id, v?.status === "READY");
   const [tab, setTab] = useState<Tab>("entretien");
 
+  if (!v && error) {
+    return (
+      <Screen>
+        <RobotGuide mood="alert" title="Connexion impossible" action={{ label: "Réessayer", onPress: () => void refetch() }}>
+          Je n'arrive pas à charger cette voiture. Vérifiez votre connexion internet.
+        </RobotGuide>
+      </Screen>
+    );
+  }
   if (isLoading || !v) {
     return (
       <Screen>
@@ -218,20 +245,29 @@ function Dashboard({ id }: { id: string }) {
         value={tab}
         onChange={setTab}
         options={[
-          { value: "entretien", label: "Entretien", icon: "construct-outline" },
-          { value: "fiche", label: "Fiche", icon: "document-text-outline" },
-          { value: "reglages", label: "Réglages", icon: "options-outline" },
+          { value: "entretien", label: "Entretien" },
+          { value: "historique", label: "Historique" },
+          { value: "fiche", label: "Fiche" },
+          { value: "reglages", label: "Réglages" },
         ]}
       />
 
       {tab === "entretien" &&
         (v.status === "READY" ? (
-          <MaintenanceSection vehicleId={v.id} mileageKm={v.mileageKm} data={maintenance.data} loading={maintenance.isLoading} />
+          <MaintenanceSection
+            vehicleId={v.id}
+            mileageKm={v.mileageKm}
+            data={maintenance.data}
+            loading={maintenance.isLoading}
+            error={maintenance.error}
+            onRetry={() => void maintenance.refetch()}
+          />
         ) : (
           <Card>
             <Txt tone="muted">Le plan d'entretien apparaîtra dès que j'aurai identifié votre voiture.</Txt>
           </Card>
         ))}
+      {tab === "historique" && <HistorySection vehicleId={v.id} />}
       {tab === "fiche" &&
         (v.status === "READY" && p ? (
           <Specs v={v} />
