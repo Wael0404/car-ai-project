@@ -18,6 +18,8 @@ const EnvSchema = z.object({
   CLAUDE_MODEL: z.string().default("claude-haiku-5-5"),
   /** Simple tasks (filling the spec sheet, checking images): cheapest model. */
   CLAUDE_FAST_MODEL: z.string().default("claude-haiku-5-5"),
+  /** Tunisian shop domains the price agent searches (comma-separated; empty = whole web). */
+  PRICE_DOMAINS: z.string().optional().default(""),
   /** Hugging Face token: enables 3D generation from photos (TRELLIS). */
   HF_TOKEN: z.string().optional(),
   AGENT_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(4),

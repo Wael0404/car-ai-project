@@ -27,7 +27,13 @@
       "expo-router",
       "expo-secure-store",
       "expo-status-bar",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Car AI utilise votre position pour trouver les garages proches de vous."
+        }
+      ]
     ],
     "scheme": "carai",
     "experiments": {

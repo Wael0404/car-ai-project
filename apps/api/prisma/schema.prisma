@@ -157,3 +157,22 @@ model MaintenanceRecord {
 
   @@index([vehicleId, itemId])
 }
+
+/// Prices of one maintenance item for one car version, looked up by the AI
+/// agent on Tunisian shops when an owner opens it; cached and shared 7 days.
+model PartPrices {
+  /// "<maintenance plan key>|<item id>"
+  key       String     @id @db.VarChar(320)
+  status    PlanStatus @default(PENDING)
+  /// [{ shop, product, brand, priceTnd, url }]
+  offers    Json?
+  /// { minTnd, maxTnd, note } labour estimate at a garage
+  labor     Json?
+  note      String?
+  error     String?
+  attempts  Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([status])
+}

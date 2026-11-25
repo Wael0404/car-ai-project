@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import type { Maintenance, OwnerHints, Vehicle } from "./types";
+import type { Maintenance, OwnerHints, PartPrices, Vehicle } from "./types";
 
 const POLL_MS = 4000;
 
@@ -79,5 +79,23 @@ export function useMarkMaintenanceDone(id: string) {
   return useMutation({
     mutationFn: ({ itemId, km }: { itemId: string; km?: number }) => api.markMaintenanceDone(id, itemId, km),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["maintenance", id] }),
+  });
+}
+
+/** Shop prices for one maintenance item; polls while the agent is searching. */
+export function usePartPrices(vehicleId: string, itemId: string) {
+  return useQuery({
+    queryKey: ["prices", vehicleId, itemId],
+    queryFn: () => api.getPartPrices(vehicleId, itemId),
+    refetchInterval: (q) => ((q.state.data as PartPrices | undefined)?.status === "PENDING" ? POLL_MS : false),
+  });
+}
+
+export function useGarages(coords: { lat: number; lon: number } | null) {
+  return useQuery({
+    queryKey: ["garages", coords?.lat.toFixed(2), coords?.lon.toFixed(2)],
+    queryFn: () => api.getGarages(coords!.lat, coords!.lon),
+    enabled: coords !== null,
+    staleTime: 3600_000,
   });
 }

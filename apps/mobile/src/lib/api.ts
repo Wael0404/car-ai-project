@@ -1,5 +1,5 @@
 import * as SecureStore from "expo-secure-store";
-import type { Maintenance, OwnerHints, Tokens, Vehicle } from "./types";
+import type { Garage, Maintenance, OwnerHints, PartPrices, Tokens, Vehicle } from "./types";
 
 /** Set EXPO_PUBLIC_API_URL in apps/mobile/.env (use your PC's LAN IP on a real phone). */
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3100/v1";
@@ -113,6 +113,10 @@ export const api = {
   addVehicle: (input: { vin: string; nickname?: string; color?: string } & OwnerHints) =>
     request<Vehicle>("/vehicles", { method: "POST", body: JSON.stringify(input) }),
   getMaintenance: (id: string) => request<Maintenance>(`/vehicles/${id}/maintenance`),
+  getPartPrices: (id: string, itemId: string) =>
+    request<PartPrices>(`/vehicles/${id}/maintenance/${encodeURIComponent(itemId)}/prices`),
+  getGarages: (lat: number, lon: number) =>
+    request<{ garages: Garage[] }>(`/garages?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`),
   markMaintenanceDone: (id: string, itemId: string, km?: number) =>
     request<void>(`/vehicles/${id}/maintenance/${encodeURIComponent(itemId)}/done`, {
       method: "POST",

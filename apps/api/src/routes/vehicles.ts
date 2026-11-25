@@ -6,6 +6,7 @@ import { enqueueVinResearch } from "../lib/queue.js";
 import { normalizeCode } from "../lib/specReuse.js";
 import { computeDue, parseRegistrationDate, type PlanItem } from "../lib/maintenance.js";
 import { maintenanceKey } from "../maintenanceJobs.js";
+import { getOrQueuePrices } from "../priceJobs.js";
 import type { VehicleProfile } from "../agent/schema.js";
 import { validateVin } from "../lib/vin.js";
 import type { Prisma } from "../generated/prisma/client.js";
@@ -273,6 +274,33 @@ export async function vehicleRoutes(app: FastifyInstance) {
       confidence: plan.confidence,
       planSize: (plan.items as unknown[]).length,
       items,
+    };
+  });
+
+  /**
+   * Prices of the parts for one maintenance item on Tunisian shops + labour
+   * estimate. Looked up by the AI agent the first time someone opens the
+   * item for this car version, then shared for 7 days. Poll while PENDING.
+   */
+  app.get("/vehicles/:id/maintenance/:itemId/prices", async (req, reply) => {
+    const { id, itemId } = ItemParams.parse(req.params);
+    const vehicle = await prisma.vehicle.findFirst({ where: { id, userId: req.user.sub }, include: { spec: true } });
+    if (!vehicle) return reply.code(404).send({ error: "Véhicule introuvable." });
+    const profile = vehicle.spec.data as unknown as VehicleProfile | null;
+    const planKey = profile ? maintenanceKey(profile) : null;
+    const plan = planKey ? await prisma.maintenancePlan.findUnique({ where: { key: planKey } }) : null;
+    const item = Array.isArray(plan?.items) ? (plan!.items as unknown as PlanItem[]).find((i) => i.id === itemId) : undefined;
+    if (!profile || !planKey || !item) return reply.code(404).send({ error: "Élément d'entretien introuvable." });
+
+    const row = await getOrQueuePrices(`${planKey}|${itemId}`, profile, item);
+    return {
+      status: row.status,
+      offers: row.offers ?? [],
+      labor: row.labor ?? null,
+      note: row.note,
+      updatedAt: row.updatedAt,
+      item,
+      car: [profile.make, profile.model].filter(Boolean).join(" "),
     };
   });
 

@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { Body, Button, Card, Field } from "@/components/ui";
@@ -49,7 +50,14 @@ function ItemRow({ item, vehicleId }: { item: MaintenanceItem; vehicleId: string
   return (
     <View style={{ flexDirection: "row", gap: 12, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: t.border }}>
       <View style={{ width: 4, borderRadius: 2, backgroundColor: color }} />
-      <View style={{ flex: 1, gap: 3 }}>
+      <Pressable
+        style={{ flex: 1, gap: 3 }}
+        accessibilityRole="button"
+        accessibilityHint="Voir les prix et les garages"
+        onPress={() =>
+          router.push({ pathname: "/maintenance/[vehicleId]/[itemId]", params: { vehicleId, itemId: item.id } })
+        }
+      >
         <Text style={{ color: t.text, fontSize: 15, fontWeight: "600" }}>
           {ACTION[item.action] ?? ""} · {item.name}
         </Text>
@@ -59,7 +67,8 @@ function ItemRow({ item, vehicleId }: { item: MaintenanceItem; vehicleId: string
           {item.lastDoneKm !== null ? ` · fait à ${km(item.lastDoneKm)}` : ""}
         </Text>
         {item.note ? <Text style={{ color: t.muted, fontSize: 12 }}>{item.note}</Text> : null}
-      </View>
+        <Text style={{ color: t.primary, fontSize: 13, fontWeight: "600" }}>Prix et garages ›</Text>
+      </Pressable>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Marquer ${item.name} comme fait`}

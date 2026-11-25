@@ -38,6 +38,7 @@ export default function RootLayout() {
           <Stack.Screen name="garage" options={{ title: "Mes voitures" }} />
           <Stack.Screen name="add-vehicle" options={{ title: "Ajouter une voiture", presentation: "modal" }} />
           <Stack.Screen name="vehicle/[id]" options={{ title: "" }} />
+          <Stack.Screen name="maintenance/[vehicleId]/[itemId]" options={{ title: "Prix et garages" }} />
         </Stack>
       </AuthProvider>
     </QueryClientProvider>

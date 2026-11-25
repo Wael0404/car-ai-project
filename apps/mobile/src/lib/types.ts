@@ -121,3 +121,32 @@ export interface Maintenance {
   confidence?: string | null;
   items: MaintenanceItem[];
 }
+
+export interface PartOffer {
+  shop: string;
+  product: string;
+  priceTnd: number | null;
+  url: string;
+}
+
+export interface PartPrices {
+  status: "PENDING" | "READY" | "FAILED";
+  offers: PartOffer[];
+  labor: { minTnd: number | null; maxTnd: number | null; note: string } | null;
+  note: string | null;
+  updatedAt: string;
+  item: Pick<MaintenanceItem, "id" | "name" | "category" | "action" | "note">;
+  car: string;
+}
+
+export interface Garage {
+  id: string;
+  name: string;
+  kind: "car_repair" | "car_parts" | "tyres";
+  lat: number;
+  lon: number;
+  distanceKm: number;
+  phone: string | null;
+  address: string | null;
+  openingHours: string | null;
+}

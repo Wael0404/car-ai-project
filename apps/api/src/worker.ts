@@ -12,6 +12,8 @@ import { prisma } from "./lib/db.js";
 import {
   MAINTENANCE_QUEUE,
   MODEL3D_QUEUE,
+  PRICE_QUEUE,
+  type PriceJobData,
   VIN_QUEUE,
   type MaintenanceJobData,
   type Model3DJobData,
@@ -19,6 +21,7 @@ import {
 } from "./lib/queue.js";
 import { ensureModel3D, runModel3DSearch } from "./model3dJobs.js";
 import { ensureMaintenancePlan, runMaintenancePlan } from "./maintenanceJobs.js";
+import { runPriceLookup } from "./priceJobs.js";
 import { findReusableProfile } from "./lib/specReuse.js";
 import { createQueueConnection } from "./lib/redis.js";
 
@@ -83,6 +86,18 @@ const worker = new Worker<VinJobData>(
 worker.on("failed", (job, err) => log.error({ vin: job?.data.vin, err: err.message }, "Job failed"));
 
 /** Second queue: the 3D model agent (one search per make/model/generation). */
+/** Fourth queue: part prices, looked up only when an owner opens an item. */
+const priceWorker = new Worker<PriceJobData>(
+  PRICE_QUEUE,
+  async (job) => {
+    const finalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+    log.info({ key: job.data.key }, "Looking up part prices");
+    await runPriceLookup(job.data, finalAttempt, log);
+  },
+  { connection: createQueueConnection(), concurrency: 3 },
+);
+priceWorker.on("failed", (job, err) => log.error({ key: job?.data.key, err: err.message }, "Price job failed"));
+
 /** Third queue: maintenance plan per car version (one cheap AI run each). */
 const maintenanceWorker = new Worker<MaintenanceJobData>(
   MAINTENANCE_QUEUE,
@@ -109,7 +124,7 @@ model3dWorker.on("failed", (job, err) => log.error({ key: job?.data.key, err: er
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, async () => {
     log.info("Stopping worker (waiting for running jobs)");
-    await Promise.all([worker.close(), model3dWorker.close(), maintenanceWorker.close()]);
+    await Promise.all([worker.close(), model3dWorker.close(), maintenanceWorker.close(), priceWorker.close()]);
     await prisma.$disconnect();
     process.exit(0);
   });

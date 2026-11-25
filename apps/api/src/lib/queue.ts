@@ -100,3 +100,30 @@ export async function enqueueMaintenancePlan(data: MaintenanceJobData): Promise<
   if (previous && ((await previous.isFailed()) || (await previous.isCompleted()))) await previous.remove();
   await maintenanceQueue.add("plan", data, { jobId });
 }
+
+// --- Part prices (one job per maintenance item and car version, on demand) ---
+
+export const PRICE_QUEUE = "part-prices";
+
+export interface PriceJobData {
+  key: string;
+  profile: unknown;
+  item: unknown;
+}
+
+export const priceQueue = new Queue<PriceJobData>(PRICE_QUEUE, {
+  connection: createQueueConnection(),
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: { type: "exponential", delay: 30_000 },
+    removeOnComplete: { age: 24 * 3600, count: 10_000 },
+    removeOnFail: { age: 7 * 24 * 3600 },
+  },
+});
+
+export async function enqueuePriceLookup(data: PriceJobData): Promise<void> {
+  const jobId = `pp-${Buffer.from(data.key).toString("base64url").slice(0, 180)}`;
+  const previous = await priceQueue.getJob(jobId);
+  if (previous && ((await previous.isFailed()) || (await previous.isCompleted()))) await previous.remove();
+  await priceQueue.add("prices", data, { jobId });
+}

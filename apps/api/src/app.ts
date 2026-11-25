@@ -10,6 +10,7 @@ import { prisma } from "./lib/db.js";
 import { MODELS_DIR, SERVE_MODELS_LOCALLY } from "./lib/model3d.js";
 import { redis } from "./lib/redis.js";
 import { authRoutes } from "./routes/auth.js";
+import { garageRoutes } from "./routes/garages.js";
 import { vehicleRoutes } from "./routes/vehicles.js";
 
 declare module "@fastify/jwt" {
@@ -80,6 +81,7 @@ export async function buildApp() {
 
   await app.register(authRoutes, { prefix: "/v1" });
   await app.register(vehicleRoutes, { prefix: "/v1" });
+  await app.register(garageRoutes, { prefix: "/v1" });
 
   return app;
 }
