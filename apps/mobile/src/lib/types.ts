@@ -58,7 +58,18 @@ export type Model3D =
       /** false: closest model of the same generation, another version. */
       exact: boolean;
     }
+  | { kind: "photos"; bodyType: BodyType; photos: GalleryPhoto[] }
   | { kind: "procedural"; bodyType: BodyType; searching?: boolean };
+
+/** Real photo of the exact version (shown when no artist 3D model exists). */
+export interface GalleryPhoto {
+  angle: string;
+  url: string;
+  pageUrl: string;
+  author: string;
+  license: string;
+  title: string;
+}
 
 /** What the owner reads on the registration card (carte grise). */
 export interface OwnerHints {

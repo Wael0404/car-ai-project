@@ -4,6 +4,7 @@ import { PanResponder, StyleSheet, View } from "react-native";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { GlbViewer } from "@/components/GlbViewer";
+import { PhotoGallery } from "@/components/PhotoGallery";
 import { SketchfabViewer } from "@/components/SketchfabViewer";
 import type { BodyType, Model3D } from "@/lib/types";
 
@@ -193,6 +194,9 @@ function Turntable({
 /** Picks the best available view: Sketchfab model, own GLB, or generic car. */
 export function Car3D({ model3d, color, height = 280 }: { model3d: Model3D | null; color: string; height?: number }) {
   const [viewerFailed, setViewerFailed] = useState(false);
+  if (model3d?.kind === "photos") {
+    return <PhotoGallery photos={model3d.photos} height={height} />;
+  }
   if (model3d?.kind === "glb" && !viewerFailed) {
     return <GlbViewer url={model3d.url} height={height} onError={() => setViewerFailed(true)} />;
   }
@@ -241,7 +245,9 @@ function Car3DCanvas({ model3d, color, height }: { model3d: Model3D | null; colo
   );
 
   const model: Model3D =
-    model3d && model3d.kind !== "sketchfab" ? model3d : { kind: "procedural", bodyType: model3d?.bodyType ?? "sedan" };
+    model3d && model3d.kind !== "sketchfab" && model3d.kind !== "photos"
+      ? model3d
+      : { kind: "procedural", bodyType: model3d?.bodyType ?? "sedan" };
 
   return (
     <View style={[styles.container, { height }]} {...pan.panHandlers}>

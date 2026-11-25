@@ -49,6 +49,7 @@ const SEARCH_PENDING: CatalogRow = {
   exactMatch: false,
   source: "sketchfab",
   glbFile: null,
+  photos: null,
   title: null,
   author: null,
   license: null,

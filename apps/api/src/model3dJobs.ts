@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 import { mkdir, writeFile } from "node:fs/promises";
 import { findCarModel } from "./agent/modelFinder.js";
+import { findCarGallery } from "./agent/photoGallery.js";
 import { findCarPhoto, generateGlb } from "./agent/photoTo3D.js";
 import type { VehicleProfile } from "./agent/schema.js";
 import { prisma } from "./lib/db.js";
@@ -48,7 +49,44 @@ const slug = (key: string) =>
     .replace(/^-|-$/g, "")
     .slice(0, 120);
 
+/** Real photos of the exact version, one per angle. Returns false if none fit. */
+async function buildGallery(data: Model3DJobData, log: Logger): Promise<boolean> {
+  const { views, reason } = await findCarGallery(data);
+  if (views.length === 0) {
+    log.info({ key: data.key, reason }, "No photos of this exact car");
+    return false;
+  }
+  await prisma.carModel3D.update({
+    where: { key: data.key },
+    data: {
+      status: "FOUND",
+      source: "photos",
+      exactMatch: true,
+      sketchfabUid: null,
+      glbFile: null,
+      photos: views.map((v) => ({
+        angle: v.angle,
+        url: v.photo.imageUrl,
+        pageUrl: v.photo.pageUrl,
+        author: v.photo.author,
+        license: v.photo.license,
+        title: v.photo.title,
+      })),
+      title: views[0]!.photo.title.slice(0, 200),
+      author: views[0]!.photo.author,
+      license: views[0]!.photo.license,
+      viewerUrl: views[0]!.photo.pageUrl,
+      thumbnailUrl: views[0]!.photo.imageUrl,
+      reason,
+    },
+  });
+  log.info({ key: data.key, views: views.map((v) => v.angle) }, "Photo gallery ready");
+  return true;
+}
+
 /**
+ * Kept for later: generates a 3D model from photos with TRELLIS (realism
+ * was judged too low by the owner, so the worker does not call it now).
  * Generates the car's 3D model from a free photo of the exact version.
  * Returns false (and changes nothing) when no suitable photo exists.
  */
@@ -91,10 +129,11 @@ export async function runModel3DSearch(data: Model3DJobData, finalAttempt: boole
   try {
     const { candidate, exact, reason } = await findCarModel(data);
 
-    // No artist-made model of this exact car: generate one from a free photo.
+    // No artist-made model of this exact car: show real photos of it instead
+    // (free and photoreal; AI-generated meshes were not realistic enough).
     if (!candidate) {
-      const generated = await generateFromPhoto(data, log);
-      if (generated) return;
+      const shown = await buildGallery(data, log);
+      if (shown) return;
     }
 
     await prisma.carModel3D.update({

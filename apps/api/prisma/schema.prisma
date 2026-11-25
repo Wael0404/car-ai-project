@@ -75,6 +75,9 @@ model CarModel3D {
   source       String        @default("sketchfab") @db.VarChar(20)
   /// Generated GLB, relative to the models folder/CDN (source = "generated").
   glbFile      String?       @db.VarChar(200)
+  /// Real photos of the exact version (source = "photos"):
+  /// [{ angle, url, pageUrl, author, license, title }]
+  photos       Json?
   title        String?
   author       String?
   license      String?

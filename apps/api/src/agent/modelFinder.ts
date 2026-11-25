@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { config } from "../config.js";
-import { fallbackParams } from "../lib/claude.js";
+import { fallbackParams, imageBlock } from "../lib/claude.js";
 import { searchSketchfab, type SketchfabCandidate } from "./sketchfab.js";
 
 const client = new Anthropic({ maxRetries: 3 });
@@ -96,7 +96,10 @@ export async function findCarModel(car: CarIdentity): Promise<ModelChoice> {
   const content: Anthropic.Beta.BetaContentBlockParam[] = [
     { type: "text", text: `Voiture à représenter :\n${describe(car)}\n\nCandidats :` },
   ];
-  for (const c of candidates) {
+  const images = await Promise.all(candidates.map((c) => imageBlock(c.thumbnailUrl!)));
+  candidates.forEach((c, i) => {
+    const image = images[i];
+    if (!image) return; // preview unavailable: the agent cannot check it
     content.push(
       {
         type: "text",
@@ -105,9 +108,10 @@ export async function findCarModel(car: CarIdentity): Promise<ModelChoice> {
           `Polygones : ${c.faceCount}\n` +
           `Mots-clés : ${c.tags.join(", ") || "aucun"}\nDescription : ${c.description || "aucune"}`,
       },
-      { type: "image", source: { type: "url", url: c.thumbnailUrl! } },
+      image,
     );
-  }
+  });
+  if (images.every((i) => i === null)) return { candidate: null, exact: false, reason: "Aperçus Sketchfab indisponibles." };
   content.push({ type: "text", text: "Quel candidat représente exactement cette voiture ? Réponds avec son uid ou \"none\"." });
 
   const response = await client.beta.messages.parse({
