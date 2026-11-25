@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { config } from "../config.js";
-import { fallbackParams } from "../lib/claude.js";
+import { fallbackParams, webSearchTool } from "../lib/claude.js";
 import { recordUsage } from "../lib/usage.js";
 import type { OwnerHints } from "../lib/queue.js";
 import { decodeVinNhtsa, type NhtsaDecode } from "./nhtsa.js";
@@ -67,7 +67,7 @@ async function research(vin: string, nhtsa: NhtsaDecode, hints?: OwnerHints): Pr
     output_config: { effort: "low" },
     max_iterations: 6,
     system: RESEARCH_SYSTEM,
-    tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 3 }],
+    tools: [webSearchTool(config.CLAUDE_MODEL, 3)],
     messages: [
       {
         role: "user",

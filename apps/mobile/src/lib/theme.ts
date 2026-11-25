@@ -1,29 +1,47 @@
 import { useColorScheme } from "react-native";
 
+/**
+ * Design tokens. One accent (signal teal) for actions and the robot guide;
+ * green / amber / red are kept for status only, so meaning stays obvious.
+ */
 const light = {
-  bg: "#f5f6f8",
-  card: "#ffffff",
-  text: "#111418",
-  muted: "#5f6b7a",
-  border: "#e2e5ea",
-  primary: "#1a5cff",
-  primaryText: "#ffffff",
-  danger: "#d62c2c",
-  warning: "#b26a00",
-  success: "#1e8e3e",
+  bg: "#F3F6F9",
+  card: "#FFFFFF",
+  surface2: "#EAF0F5",
+  text: "#0E1726",
+  muted: "#5A6778",
+  border: "#DFE6EE",
+  primary: "#0A8F86",
+  primarySoft: "#DDF4F1",
+  primaryText: "#FFFFFF",
+  danger: "#D93A3A",
+  dangerSoft: "#FDE8E8",
+  warning: "#B86E00",
+  warningSoft: "#FFF1DB",
+  success: "#1E8A54",
+  successSoft: "#E1F5EA",
+  shadow: "#0E1726",
+  overlay: "rgba(14,23,38,0.55)",
 };
 
 const dark: typeof light = {
-  bg: "#0d1014",
-  card: "#171b21",
-  text: "#eef1f5",
-  muted: "#97a3b3",
-  border: "#262c35",
-  primary: "#5b8cff",
-  primaryText: "#ffffff",
-  danger: "#ff6b6b",
-  warning: "#f0a742",
-  success: "#4cc26e",
+  bg: "#0A0F16",
+  card: "#121923",
+  surface2: "#1A2330",
+  text: "#EBF0F6",
+  muted: "#93A0B1",
+  border: "#232E3C",
+  primary: "#2CC8B9",
+  primarySoft: "#0F302E",
+  primaryText: "#04211F",
+  danger: "#FF6B6B",
+  dangerSoft: "#3A1616",
+  warning: "#F5B04A",
+  warningSoft: "#3A2A10",
+  success: "#4CCB86",
+  successSoft: "#113221",
+  shadow: "#000000",
+  overlay: "rgba(0,0,0,0.6)",
 };
 
 export type Theme = typeof light;
@@ -31,6 +49,30 @@ export type Theme = typeof light;
 export function useTheme(): Theme {
   return useColorScheme() === "dark" ? dark : light;
 }
+
+/** Inter, loaded in the root layout. */
+export const font = {
+  regular: "Inter_400Regular",
+  medium: "Inter_500Medium",
+  semibold: "Inter_600SemiBold",
+  bold: "Inter_700Bold",
+  extrabold: "Inter_800ExtraBold",
+} as const;
+
+/** Type scale: [fontSize, lineHeight, font]. */
+export const type = {
+  display: { fontSize: 30, lineHeight: 36, fontFamily: font.extrabold, letterSpacing: -0.6 },
+  title: { fontSize: 22, lineHeight: 28, fontFamily: font.bold, letterSpacing: -0.3 },
+  heading: { fontSize: 17, lineHeight: 22, fontFamily: font.semibold },
+  body: { fontSize: 15, lineHeight: 22, fontFamily: font.regular },
+  bodyStrong: { fontSize: 15, lineHeight: 22, fontFamily: font.semibold },
+  caption: { fontSize: 13, lineHeight: 18, fontFamily: font.regular },
+  label: { fontSize: 12, lineHeight: 16, fontFamily: font.semibold, letterSpacing: 0.6, textTransform: "uppercase" as const },
+  micro: { fontSize: 11, lineHeight: 15, fontFamily: font.regular },
+};
+
+export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
+export const radius = { sm: 10, md: 14, lg: 20, pill: 999 } as const;
 
 /** Paint colors offered when adding a car (a VIN does not encode the color). */
 export const PAINT_COLORS = [

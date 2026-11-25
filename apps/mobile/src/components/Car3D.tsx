@@ -1,3 +1,6 @@
+/* eslint-disable react-hooks/refs, react-hooks/immutability, react-hooks/preserve-manual-memoization --
+   The 3D frame loop (useFrame) and the drag gesture keep mutable state in refs
+   outside React rendering on purpose; this is the react-three-fiber pattern. */
 import { Canvas, useFrame, useLoader } from "@react-three/fiber/native";
 import { Component, Suspense, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { PanResponder, StyleSheet, View } from "react-native";

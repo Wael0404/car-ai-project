@@ -1,10 +1,13 @@
+import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { Body, Button, Card, Field } from "@/components/ui";
-import { useTheme } from "@/lib/theme";
-import type { MaintenanceItem } from "@/lib/types";
-import { useMaintenance, useMarkMaintenanceDone, useUpdateVehicle } from "@/lib/vehicles";
+import { Pressable, View } from "react-native";
+import { Button, Card, Field, Pill, SectionTitle, Skeleton, Txt, type IconName } from "@/components/ui";
+import { dateFr, km } from "@/lib/format";
+import { font, radius, space, useTheme } from "@/lib/theme";
+import type { Maintenance, MaintenanceItem } from "@/lib/types";
+import { useMarkMaintenanceDone, useUpdateVehicle } from "@/lib/vehicles";
 
 const ACTION: Record<MaintenanceItem["action"], string> = {
   remplacer: "Remplacer",
@@ -13,26 +16,32 @@ const ACTION: Record<MaintenanceItem["action"], string> = {
   nettoyer: "Nettoyer",
 };
 
-const km = (n: number) => `${n.toLocaleString("fr-FR")} km`;
-const date = (iso: string) => {
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y}`;
+export const CATEGORY_ICON: Record<string, IconName> = {
+  moteur: "color-fill-outline",
+  filtres: "funnel-outline",
+  distribution: "cog-outline",
+  allumage: "flash-outline",
+  freinage: "disc-outline",
+  refroidissement: "thermometer-outline",
+  transmission: "settings-outline",
+  pneus: "radio-button-on-outline",
+  climatisation: "snow-outline",
+  electricite: "battery-charging-outline",
+  autre: "build-outline",
 };
 
 function dueText(item: MaintenanceItem): string {
   // Timing belt/chain never marked done: we cannot assume it was changed.
-  if (item.unknownHistory && item.category === "distribution") {
-    return "Jamais indiqué comme fait : à vérifier dès maintenant";
-  }
+  if (item.unknownHistory && item.category === "distribution") return "Jamais indiqué comme fait : à vérifier maintenant";
   const parts: string[] = [];
   if (item.nextDueKm !== null) {
     parts.push(
       item.kmLeft !== null && item.kmLeft <= 0
-        ? `dépassé de ${km(-item.kmLeft)} (prévu à ${km(item.nextDueKm)})`
-        : `à ${km(item.nextDueKm)} (dans ${km(item.kmLeft ?? 0)})`,
+        ? `Dépassé de ${km(-item.kmLeft)}`
+        : `Dans ${km(item.kmLeft ?? 0)} (à ${km(item.nextDueKm)})`,
     );
   }
-  if (item.nextDueDate) parts.push(`avant le ${date(item.nextDueDate)}`);
+  if (item.nextDueDate) parts.push(`avant le ${dateFr(item.nextDueDate)}`);
   return parts.join(" ou ") || "Selon contrôle";
 }
 
@@ -43,42 +52,124 @@ function interval(item: MaintenanceItem): string {
   return parts.join(" ou ");
 }
 
-function ItemRow({ item, vehicleId }: { item: MaintenanceItem; vehicleId: string }) {
+const openItem = (vehicleId: string, itemId: string) =>
+  router.push({ pathname: "/maintenance/[vehicleId]/[itemId]", params: { vehicleId, itemId } });
+
+function ItemCard({ item, vehicleId }: { item: MaintenanceItem; vehicleId: string }) {
   const t = useTheme();
   const done = useMarkMaintenanceDone(vehicleId);
-  const color = item.status === "overdue" ? t.danger : item.status === "soon" ? t.warning : t.success;
+  const tone = item.status === "overdue" ? t.danger : item.status === "soon" ? t.warning : t.success;
+  const soft = item.status === "overdue" ? t.dangerSoft : item.status === "soon" ? t.warningSoft : t.successSoft;
+
   return (
-    <View style={{ flexDirection: "row", gap: 12, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: t.border }}>
-      <View style={{ width: 4, borderRadius: 2, backgroundColor: color }} />
+    <Card style={{ gap: space.md }}>
       <Pressable
-        style={{ flex: 1, gap: 3 }}
         accessibilityRole="button"
-        accessibilityHint="Voir les prix et les garages"
+        accessibilityLabel={`${item.name}. ${dueText(item)}. Voir les prix et les garages`}
+        onPress={() => openItem(vehicleId, item.id)}
+        style={{ flexDirection: "row", gap: space.md }}
+      >
+        <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: soft, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name={CATEGORY_ICON[item.category] ?? "build-outline"} size={22} color={tone} />
+        </View>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Txt variant="bodyStrong">{item.name}</Txt>
+          <Txt variant="caption" style={{ color: tone }}>
+            {ACTION[item.action] ?? ""} · {dueText(item)}
+          </Txt>
+          <Txt variant="micro" tone="muted">
+            {interval(item)}
+            {item.lastDoneKm !== null ? ` · fait à ${km(item.lastDoneKm)}` : ""}
+          </Txt>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={t.muted} style={{ alignSelf: "center" }} />
+      </Pressable>
+      {item.note ? (
+        <Txt variant="caption" tone="muted">
+          {item.note}
+        </Txt>
+      ) : null}
+      <View style={{ flexDirection: "row", gap: space.sm }}>
+        <View style={{ flex: 1 }}>
+          <Button label="Prix et garages" icon="pricetags-outline" variant="secondary" size="md" onPress={() => openItem(vehicleId, item.id)} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button
+            label="C'est fait"
+            icon="checkmark-done-outline"
+            variant="ghost"
+            size="md"
+            loading={done.isPending}
+            onPress={() =>
+              done.mutate(
+                { itemId: item.id },
+                { onSuccess: () => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}) },
+              )
+            }
+          />
+        </View>
+      </View>
+    </Card>
+  );
+}
+
+function MileageCard({ vehicleId, mileageKm }: { vehicleId: string; mileageKm: number | null }) {
+  const t = useTheme();
+  const update = useUpdateVehicle(vehicleId);
+  const [editing, setEditing] = useState(mileageKm === null);
+  const [input, setInput] = useState(mileageKm !== null ? String(mileageKm) : "");
+  const value = Number(input);
+  const valid = input.length > 0 && Number.isFinite(value);
+
+  if (!editing && mileageKm !== null) {
+    return (
+      <Card style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
+        <View style={{ width: 44, height: 44, borderRadius: radius.md, backgroundColor: t.primarySoft, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="speedometer-outline" size={22} color={t.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Txt variant="caption" tone="muted">
+            Kilométrage
+          </Txt>
+          <Txt variant="title" style={{ fontVariant: ["tabular-nums"] }}>
+            {km(mileageKm)}
+          </Txt>
+        </View>
+        <View style={{ width: 120 }}>
+          <Button label="Modifier" icon="create-outline" variant="ghost" size="md" onPress={() => setEditing(true)} />
+        </View>
+      </Card>
+    );
+  }
+  return (
+    <Card>
+      <Field
+        label="Kilométrage actuel du compteur"
+        icon="speedometer-outline"
+        value={input}
+        onChangeText={(v) => setInput(v.replace(/\D/g, "").slice(0, 7))}
+        keyboardType="number-pad"
+        placeholder="Ex. 85000"
+        helper="Mettez-le à jour de temps en temps pour garder un suivi juste."
+      />
+      <Button
+        label="Enregistrer"
+        icon="save-outline"
+        loading={update.isPending}
+        disabled={!valid}
         onPress={() =>
-          router.push({ pathname: "/maintenance/[vehicleId]/[itemId]", params: { vehicleId, itemId: item.id } })
+          update.mutate(
+            { mileageKm: value },
+            {
+              onSuccess: () => {
+                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                setEditing(false);
+              },
+            },
+          )
         }
-      >
-        <Text style={{ color: t.text, fontSize: 15, fontWeight: "600" }}>
-          {ACTION[item.action] ?? ""} · {item.name}
-        </Text>
-        <Text style={{ color, fontSize: 13 }}>{dueText(item)}</Text>
-        <Text style={{ color: t.muted, fontSize: 12 }}>
-          {interval(item)}
-          {item.lastDoneKm !== null ? ` · fait à ${km(item.lastDoneKm)}` : ""}
-        </Text>
-        {item.note ? <Text style={{ color: t.muted, fontSize: 12 }}>{item.note}</Text> : null}
-        <Text style={{ color: t.primary, fontSize: 13, fontWeight: "600" }}>Prix et garages ›</Text>
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Marquer ${item.name} comme fait`}
-        onPress={() => done.mutate({ itemId: item.id })}
-        disabled={done.isPending}
-        style={{ alignSelf: "center", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: t.border }}
-      >
-        {done.isPending ? <ActivityIndicator /> : <Text style={{ color: t.primary, fontWeight: "600" }}>Fait</Text>}
-      </Pressable>
-    </View>
+      />
+    </Card>
   );
 }
 
@@ -88,79 +179,73 @@ const GROUPS: Array<{ status: MaintenanceItem["status"]; title: string }> = [
   { status: "ok", title: "Plus tard" },
 ];
 
-export function MaintenanceSection({ vehicleId, mileageKm }: { vehicleId: string; mileageKm: number | null }) {
-  const t = useTheme();
-  const { data, isLoading } = useMaintenance(vehicleId, true);
-  const update = useUpdateVehicle(vehicleId);
-  const [input, setInput] = useState(mileageKm !== null ? String(mileageKm) : "");
+export function MaintenanceSection({
+  vehicleId,
+  mileageKm,
+  data,
+  loading,
+}: {
+  vehicleId: string;
+  mileageKm: number | null;
+  data: Maintenance | undefined;
+  loading: boolean;
+}) {
   const [showLater, setShowLater] = useState(false);
-
-  const value = Number(input.replace(/\D/g, ""));
-  const canSave = input.length > 0 && Number.isFinite(value) && value !== mileageKm;
+  const items = data?.items ?? [];
+  const count = (s: MaintenanceItem["status"]) => items.filter((i) => i.status === s).length;
 
   return (
-    <Card style={{ gap: 12 }}>
-      <Text style={{ color: t.text, fontSize: 18, fontWeight: "700" }}>Entretien</Text>
+    <View style={{ gap: space.lg }}>
+      <MileageCard key={String(mileageKm)} vehicleId={vehicleId} mileageKm={mileageKm} />
 
-      <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-end" }}>
-        <View style={{ flex: 1 }}>
-          <Field
-            label="Kilométrage actuel"
-            value={input}
-            onChangeText={(v) => setInput(v.replace(/\D/g, "").slice(0, 7))}
-            keyboardType="number-pad"
-            placeholder="Ex. 85000"
-          />
-        </View>
-        <View style={{ width: 120 }}>
-          <Button
-            label="Enregistrer"
-            onPress={() => update.mutate({ mileageKm: value })}
-            loading={update.isPending}
-            disabled={!canSave}
-          />
-        </View>
-      </View>
-
-      {isLoading || data?.status === "PENDING" ? (
-        <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-          <ActivityIndicator />
-          <Body muted>L'agent prépare le plan d'entretien de votre voiture…</Body>
+      {loading || data?.status === "PENDING" ? (
+        <View style={{ gap: space.md }}>
+          <Skeleton height={110} />
+          <Skeleton height={110} />
         </View>
       ) : data?.status === "FAILED" ? (
-        <Body muted>Le plan d'entretien n'a pas pu être établi pour cette voiture.</Body>
-      ) : mileageKm === null ? (
-        <Body muted>Indiquez le kilométrage pour savoir ce qu'il faut changer et quand.</Body>
-      ) : (
+        <Card>
+          <Txt tone="muted">Le plan d'entretien n'a pas pu être établi pour cette voiture.</Txt>
+        </Card>
+      ) : mileageKm === null ? null : (
         <>
+          <View style={{ flexDirection: "row", gap: space.sm, flexWrap: "wrap" }}>
+            <Pill label={`${count("overdue")} à faire`} tone={count("overdue") ? "danger" : "neutral"} icon="alert-circle" />
+            <Pill label={`${count("soon")} bientôt`} tone={count("soon") ? "warning" : "neutral"} icon="time" />
+            <Pill label={`${count("ok")} plus tard`} tone="success" icon="checkmark-circle" />
+          </View>
+
           {GROUPS.map((g) => {
-            const items = (data?.items ?? []).filter((i) => i.status === g.status);
-            if (items.length === 0) return null;
-            if (g.status === "ok" && !showLater) {
-              return (
-                <Pressable key={g.status} onPress={() => setShowLater(true)} accessibilityRole="button">
-                  <Text style={{ color: t.primary, fontWeight: "600" }}>Voir les {items.length} entretiens à venir</Text>
-                </Pressable>
-              );
-            }
+            const list = items.filter((i) => i.status === g.status);
+            if (list.length === 0) return null;
+            const hidden = g.status === "ok" && !showLater;
             return (
-              <View key={g.status}>
-                <Text style={{ color: t.muted, fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                  {g.title} ({items.length})
-                </Text>
-                {items.map((i) => (
-                  <ItemRow key={i.id} item={i} vehicleId={vehicleId} />
-                ))}
+              <View key={g.status} style={{ gap: space.md }}>
+                <SectionTitle
+                  action={
+                    g.status === "ok" ? (
+                      <Pressable onPress={() => setShowLater(!showLater)} accessibilityRole="button" hitSlop={10}>
+                        <Txt variant="caption" tone="primary" style={{ fontFamily: font.semibold }}>
+                          {showLater ? "Masquer" : "Afficher"}
+                        </Txt>
+                      </Pressable>
+                    ) : undefined
+                  }
+                >
+                  {g.title} ({list.length})
+                </SectionTitle>
+                {!hidden && list.map((i) => <ItemCard key={i.id} item={i} vehicleId={vehicleId} />)}
               </View>
             );
           })}
-          <Text style={{ color: t.muted, fontSize: 11 }}>
+
+          <Txt variant="micro" tone="muted">
             Plan indicatif établi par IA d'après le programme constructeur
-            {data?.confidence ? ` (fiabilité : ${data.confidence === "high" ? "élevée" : data.confidence === "medium" ? "moyenne" : "faible"})` : ""}.
-            Vérifiez avec le carnet d'entretien ou votre garagiste. {data?.notes ?? ""}
-          </Text>
+            {data?.confidence ? ` (fiabilité ${data.confidence === "high" ? "élevée" : data.confidence === "medium" ? "moyenne" : "faible"})` : ""}.
+            Vérifiez avec le carnet d'entretien ou votre garagiste.
+          </Txt>
         </>
       )}
-    </Card>
+    </View>
   );
 }

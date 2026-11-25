@@ -1,17 +1,72 @@
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Alert, Linking, ScrollView, Text, View } from "react-native";
+import { Alert, Linking, View } from "react-native";
 import { Car3D } from "@/components/Car3D";
 import { ColorPicker } from "@/components/ColorPicker";
 import { MaintenanceSection } from "@/components/MaintenanceSection";
 import { cleanHints, OwnerHintsFields } from "@/components/OwnerHintsFields";
 import { RequireAuth } from "@/components/RequireAuth";
-import { Body, Button, Card, Row } from "@/components/ui";
-import { useTheme } from "@/lib/theme";
-import type { OwnerHints, Vehicle } from "@/lib/types";
-import { useDeleteVehicle, useResearchAgain, useUpdateVehicle, useVehicle } from "@/lib/vehicles";
+import { RobotGuide } from "@/components/Robot";
+import { Button, Card, Pill, Row, Screen, Segmented, SectionTitle, Skeleton, Steps, Txt } from "@/components/ui";
+import { vehicleTitle } from "@/lib/format";
+import { space, useTheme } from "@/lib/theme";
+import type { Maintenance, OwnerHints, Vehicle } from "@/lib/types";
+import { useDeleteVehicle, useMaintenance, useResearchAgain, useUpdateVehicle, useVehicle } from "@/lib/vehicles";
 
-const CONFIDENCE = { high: "Élevée", medium: "Moyenne", low: "Faible" } as const;
+type Tab = "entretien" | "fiche" | "reglages";
+const CONFIDENCE = { high: "élevée", medium: "moyenne", low: "faible" } as const;
+
+/** What Robi says on this car, depending on where the analysis stands. */
+function Guide({ v, m, onFix }: { v: Vehicle; m: Maintenance | undefined; onFix: () => void }) {
+  const searching3d = v.model3d?.kind === "procedural" && v.model3d.searching === true;
+  const planPending = !m || m.status === "PENDING";
+  const overdue = m?.items.filter((i) => i.status === "overdue").length ?? 0;
+  const soon = m?.items.filter((i) => i.status === "soon").length ?? 0;
+
+  if (v.status === "FAILED") {
+    return (
+      <RobotGuide mood="alert" title="J'ai besoin d'un coup de main" action={{ label: "Compléter avec la carte grise", onPress: onFix }}>
+        Je n'ai pas réussi à identifier cette voiture avec le VIN seul. Recopiez quelques infos de la carte grise.
+      </RobotGuide>
+    );
+  }
+  if (v.status === "PENDING" || searching3d || (v.status === "READY" && planPending)) {
+    return (
+      <RobotGuide mood="thinking" title="J'analyse votre voiture">
+        <View style={{ marginTop: space.sm }}>
+          <Steps
+            steps={[
+              { label: "Identification (VIN)", state: v.status === "READY" ? "done" : "active" },
+              { label: "Photos ou modèle 3D", state: v.status !== "READY" ? "todo" : searching3d ? "active" : "done" },
+              { label: "Plan d'entretien", state: v.status !== "READY" ? "todo" : planPending ? "active" : "done" },
+            ]}
+          />
+        </View>
+      </RobotGuide>
+    );
+  }
+  if (v.mileageKm === null) {
+    return (
+      <RobotGuide mood="happy" title="Votre voiture est prête">
+        Indiquez son kilométrage ci-dessous : je vous dirai exactement quoi changer et quand.
+      </RobotGuide>
+    );
+  }
+  if (overdue > 0) {
+    return (
+      <RobotGuide mood="alert" title={`${overdue} entretien${overdue > 1 ? "s" : ""} à faire maintenant`} compact>
+        Touchez un élément pour voir le prix des pièces et les garages près de chez vous.
+      </RobotGuide>
+    );
+  }
+  return (
+    <RobotGuide mood="happy" compact>
+      {soon > 0
+        ? `Tout va bien. ${soon} entretien${soon > 1 ? "s" : ""} à prévoir bientôt.`
+        : "Tout est à jour. Pensez à mettre à jour le kilométrage de temps en temps."}
+    </RobotGuide>
+  );
+}
 
 function Specs({ v }: { v: Vehicle }) {
   const t = useTheme();
@@ -19,30 +74,33 @@ function Specs({ v }: { v: Vehicle }) {
   const e = p.engine;
   const check = p.ownerDataCheck;
   return (
-    <>
+    <View style={{ gap: space.lg }}>
       {check?.status === "conflict" && (
         <Card style={{ borderColor: t.danger, borderWidth: 1 }}>
-          <Text style={{ color: t.danger, fontWeight: "700", fontSize: 15 }}>Le VIN ne correspond pas à votre carte grise</Text>
-          <Body>{check.explanation ?? "Vérifiez le VIN saisi (case E de la carte grise)."}</Body>
+          <Txt variant="bodyStrong" tone="danger">
+            Le VIN ne correspond pas à votre carte grise
+          </Txt>
+          <Txt tone="muted">{check.explanation || "Vérifiez le VIN saisi (case E de la carte grise)."}</Txt>
         </Card>
       )}
       <Card>
-        <Body>{p.summary}</Body>
-        <Text style={{ color: p.confidence === "high" ? t.success : t.warning, fontSize: 13 }}>
-          Fiabilité des informations : {CONFIDENCE[p.confidence]}
-        </Text>
+        <Txt>{p.summary}</Txt>
+        <Pill label={`Fiabilité ${CONFIDENCE[p.confidence]}`} tone={p.confidence === "high" ? "success" : "warning"} icon="shield-checkmark" />
       </Card>
+      <SectionTitle>Identité</SectionTitle>
       <Card style={{ gap: 0 }}>
         <Row label="Marque" value={p.make} />
         <Row label="Modèle" value={p.model} />
-        <Row label="Version" value={p.trim} />
         <Row label="Génération" value={p.generation} />
         <Row label="Version" value={p.bodyVariant && p.bodyVariant !== "standard" ? p.bodyVariant : "Standard"} />
+        <Row label="Finition" value={p.trim} />
         <Row label="Année modèle" value={p.modelYear} />
         <Row label="Carrosserie" value={p.bodyType} />
         <Row label="Portes" value={p.doors} />
         <Row label="Places" value={p.seats} />
+        <Row label="VIN" value={v.vin} />
       </Card>
+      <SectionTitle>Mécanique</SectionTitle>
       <Card style={{ gap: 0 }}>
         <Row label="Moteur" value={e.description} />
         <Row label="Cylindrée" value={e.displacementL ? `${e.displacementL.toFixed(1)} L` : null} />
@@ -53,116 +111,138 @@ function Specs({ v }: { v: Vehicle }) {
         <Row label="Transmission" value={p.drivetrain} />
         <Row label="Constructeur" value={p.manufacturer} />
         <Row label="Pays d'assemblage" value={p.plantCountry} />
-        <Row label="VIN" value={v.vin} />
       </Card>
       {p.sources.length > 0 && (
-        <Card>
-          <Body muted style={{ fontSize: 13, fontWeight: "600" }}>Sources</Body>
-          {p.sources.slice(0, 6).map((url) => (
-            <Text key={url} style={{ color: t.primary, fontSize: 13 }} numberOfLines={1} onPress={() => Linking.openURL(url)}>
-              {url}
-            </Text>
-          ))}
-        </Card>
+        <>
+          <SectionTitle>Sources</SectionTitle>
+          <Card>
+            {p.sources.slice(0, 6).map((url) => (
+              <Txt key={url} variant="caption" tone="primary" numberOfLines={1} onPress={() => Linking.openURL(url)}>
+                {url}
+              </Txt>
+            ))}
+          </Card>
+        </>
       )}
-    </>
+    </View>
   );
 }
 
-function CorrectionCard({ v }: { v: Vehicle }) {
-  const [open, setOpen] = useState(v.status === "FAILED");
-  const [hints, setHints] = useState<OwnerHints>(v.declared ?? {});
+function Settings({ v, onDeleted }: { v: Vehicle; onDeleted: () => void }) {
+  const update = useUpdateVehicle(v.id);
   const research = useResearchAgain(v.id);
+  const remove = useDeleteVehicle();
+  const [hints, setHints] = useState<OwnerHints>(v.declared ?? {});
 
-  if (!open) {
-    return <Button label="Ce n'est pas ma voiture ? Corriger" variant="secondary" onPress={() => setOpen(true)} />;
+  function confirmDelete() {
+    Alert.alert("Supprimer cette voiture ?", "Elle sera retirée de votre compte, avec son suivi d'entretien.", [
+      { text: "Annuler", style: "cancel" },
+      { text: "Supprimer", style: "destructive", onPress: () => remove.mutate(v.id, { onSuccess: onDeleted }) },
+    ]);
   }
+
   return (
-    <Card style={{ gap: 14 }}>
-      <Body style={{ fontWeight: "600" }}>
-        {v.status === "FAILED" ? "La recherche n'a pas abouti." : "Corriger les informations de votre voiture"}
-      </Body>
-      <OwnerHintsFields value={hints} onChange={setHints} />
-      <Button
-        label="Relancer la recherche"
-        onPress={() => research.mutate(cleanHints(hints), { onSuccess: () => setOpen(false) })}
-        loading={research.isPending}
-      />
-      {research.error ? <Body muted>{research.error.message}</Body> : null}
-    </Card>
+    <View style={{ gap: space.lg }}>
+      <SectionTitle>Couleur</SectionTitle>
+      <Card>
+        <ColorPicker value={v.color} onChange={(color) => update.mutate({ color })} />
+      </Card>
+
+      <SectionTitle>Ce n'est pas ma voiture ?</SectionTitle>
+      <Card style={{ gap: space.lg }}>
+        <Txt tone="muted">Recopiez les informations de votre carte grise, puis relancez la recherche.</Txt>
+        <OwnerHintsFields value={hints} onChange={setHints} />
+        <Button
+          label="Relancer la recherche"
+          icon="refresh"
+          variant="secondary"
+          disabled={v.status === "PENDING"}
+          loading={research.isPending}
+          onPress={() => research.mutate(cleanHints(hints))}
+        />
+        {research.error ? <Txt tone="danger">{research.error.message}</Txt> : null}
+      </Card>
+
+      <Button label="Supprimer cette voiture" icon="trash-outline" variant="danger" onPress={confirmDelete} loading={remove.isPending} />
+    </View>
   );
 }
 
 function Dashboard({ id }: { id: string }) {
   const t = useTheme();
   const { data: v, isLoading } = useVehicle(id);
-  const update = useUpdateVehicle(id);
-  const remove = useDeleteVehicle();
+  const maintenance = useMaintenance(id, v?.status === "READY");
+  const [tab, setTab] = useState<Tab>("entretien");
 
   if (isLoading || !v) {
-    return <ActivityIndicator style={{ marginTop: 40 }} />;
+    return (
+      <Screen>
+        <Skeleton height={260} />
+        <Skeleton height={28} width="60%" />
+        <Skeleton height={90} />
+      </Screen>
+    );
   }
 
+  const p = v.profile;
   const credit = v.model3d?.kind === "glb" || v.model3d?.kind === "sketchfab" ? v.model3d.credit : null;
-  const title = v.nickname ?? ([v.profile?.make, v.profile?.model].filter(Boolean).join(" ") || "Ma voiture");
-
-  function confirmDelete() {
-    Alert.alert("Supprimer cette voiture ?", "Elle sera retirée de votre compte.", [
-      { text: "Annuler", style: "cancel" },
-      {
-        text: "Supprimer",
-        style: "destructive",
-        onPress: () => remove.mutate(id, { onSuccess: () => router.back() }),
-      },
-    ]);
-  }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: t.bg }} contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 40 }}>
-      <Stack.Screen options={{ title }} />
+    <Screen>
+      <Stack.Screen options={{ title: vehicleTitle(v) }} />
 
-      <Card style={{ padding: 0, overflow: "hidden" }}>
-        <Car3D model3d={v.model3d} color={v.color} />
+      <Card padded={false} style={{ overflow: "hidden" }}>
+        <Car3D model3d={v.model3d} color={v.color} height={260} />
       </Card>
-      {(v.model3d?.kind === "glb" || v.model3d?.kind === "sketchfab") && v.model3d.credit && (
-        <Text style={{ color: t.muted, fontSize: 11 }} onPress={() => credit && Linking.openURL(credit.url)}>
-          {v.model3d.kind === "glb" && v.model3d.generated
-            ? `Modèle 3D généré par IA à partir d'une photo de ${v.model3d.credit.author}`
-            : `Modèle 3D « ${v.model3d.credit.title} » par ${v.model3d.credit.author}`}
-          {v.model3d.credit.license ? ` (${v.model3d.credit.license})` : ""}
-          {v.model3d.kind === "glb" && v.model3d.generated ? ", Wikimedia Commons" : ""}
-          {v.model3d.kind === "sketchfab" ? ", fourni par Sketchfab" : ""}
-        </Text>
-      )}
-      {v.model3d?.kind === "sketchfab" && !v.model3d.exact && (
-        <Text style={{ color: t.warning, fontSize: 13 }}>
-          Modèle 3D le plus proche disponible : « {v.model3d.credit.title} ». Aucun modèle 3D gratuit de votre version
-          exacte n'existe pour l'instant ; nous le remplacerons automatiquement dès qu'il en apparaîtra un.
-        </Text>
-      )}
-      <ColorPicker value={v.color} onChange={(color) => update.mutate({ color })} />
-      {v.model3d?.kind === "procedural" && (
-        <Body muted style={{ fontSize: 12 }}>
-          {v.model3d.searching
-            ? "L'agent IA recherche le modèle 3D de votre voiture…"
-            : `Modèle 3D générique de type « ${v.model3d.bodyType} » : aucun modèle 3D gratuit fidèle à votre voiture n'a été trouvé pour l'instant.`}
-        </Body>
-      )}
+      {credit ? (
+        <Txt variant="micro" tone="muted" onPress={() => Linking.openURL(credit.url)}>
+          Modèle 3D « {credit.title} » par {credit.author}
+          {credit.license ? ` (${credit.license})` : ""}
+        </Txt>
+      ) : null}
 
-      {v.status === "PENDING" && (
-        <Card style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <ActivityIndicator />
-          <Body style={{ flex: 1 }}>L'agent IA recherche les caractéristiques de votre voiture. Cela prend en général moins d'une minute.</Body>
-        </Card>
-      )}
-      {v.status === "READY" && v.profile && <MaintenanceSection vehicleId={v.id} mileageKm={v.mileageKm} />}
-      {v.status === "READY" && v.profile && <Specs v={v} />}
-      {v.status !== "PENDING" && <CorrectionCard key={v.status} v={v} />}
-
-      <View style={{ marginTop: 8 }}>
-        <Button label="Supprimer cette voiture" variant="danger" onPress={confirmDelete} loading={remove.isPending} />
+      <View style={{ gap: space.sm }}>
+        <Txt variant="title">{vehicleTitle(v)}</Txt>
+        {p ? (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.sm }}>
+            {p.modelYear ? <Pill label={String(p.modelYear)} icon="calendar" /> : null}
+            {p.engine.fuelType ? <Pill label={p.engine.fuelType} icon="water" /> : null}
+            <Pill label={p.bodyVariant && p.bodyVariant !== "standard" ? p.bodyVariant : "Version standard"} icon="car-sport" />
+          </View>
+        ) : null}
       </View>
-    </ScrollView>
+
+      <Guide v={v} m={maintenance.data} onFix={() => setTab("reglages")} />
+
+      <Segmented<Tab>
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: "entretien", label: "Entretien", icon: "construct-outline" },
+          { value: "fiche", label: "Fiche", icon: "document-text-outline" },
+          { value: "reglages", label: "Réglages", icon: "options-outline" },
+        ]}
+      />
+
+      {tab === "entretien" &&
+        (v.status === "READY" ? (
+          <MaintenanceSection vehicleId={v.id} mileageKm={v.mileageKm} data={maintenance.data} loading={maintenance.isLoading} />
+        ) : (
+          <Card>
+            <Txt tone="muted">Le plan d'entretien apparaîtra dès que j'aurai identifié votre voiture.</Txt>
+          </Card>
+        ))}
+      {tab === "fiche" &&
+        (v.status === "READY" && p ? (
+          <Specs v={v} />
+        ) : (
+          <Card>
+            <Txt tone="muted">La fiche technique apparaîtra à la fin de l'analyse.</Txt>
+          </Card>
+        ))}
+      {tab === "reglages" && <Settings v={v} onDeleted={() => router.back()} />}
+      <View style={{ height: space.sm, backgroundColor: t.bg }} />
+    </Screen>
   );
 }
 

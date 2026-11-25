@@ -33,7 +33,8 @@
         {
           "locationWhenInUsePermission": "Car AI utilise votre position pour trouver les garages proches de vous."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "scheme": "carai",
     "experiments": {

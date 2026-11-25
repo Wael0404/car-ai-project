@@ -36,3 +36,15 @@ export function fallbackParams(model: string): Pick<Anthropic.Beta.MessageCreate
   if (model.startsWith("claude-haiku")) return {};
   return { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" };
 }
+
+/**
+ * Web search tool for this model. The dynamic-filtering variant (20260209)
+ * is for Opus / Sonnet / Fable; Claude Haiku mis-formats its queries with it
+ * (invalid_tool_input, then max_uses_exceeded), so Haiku gets the basic one.
+ */
+export function webSearchTool(model: string, maxUses: number, allowedDomains: string[] = []): Anthropic.Beta.BetaToolUnion {
+  const domains = allowedDomains.length > 0 ? { allowed_domains: allowedDomains } : {};
+  return model.startsWith("claude-haiku")
+    ? { type: "web_search_20250305", name: "web_search", max_uses: maxUses, ...domains }
+    : { type: "web_search_20260209", name: "web_search", max_uses: maxUses, ...domains };
+}

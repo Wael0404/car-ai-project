@@ -1,16 +1,15 @@
 import { View } from "react-native";
-import { Body, Field } from "@/components/ui";
+import { Field } from "@/components/ui";
+import { space } from "@/lib/theme";
 import type { OwnerHints } from "@/lib/types";
 
 /** Make / model / type as written on the registration card (carte grise). */
 export function OwnerHintsFields({ value, onChange }: { value: OwnerHints; onChange: (v: OwnerHints) => void }) {
   return (
-    <View style={{ gap: 14 }}>
-      <Body muted style={{ fontSize: 13 }}>
-        Recopiez ces informations de votre carte grise pour aider l'agent à trouver la version exacte (facultatif).
-      </Body>
+    <View style={{ gap: space.lg }}>
       <Field
         label="Constructeur"
+        icon="business-outline"
         value={value.make ?? ""}
         onChangeText={(make) => onChange({ ...value, make })}
         placeholder="FIAT"
@@ -19,6 +18,7 @@ export function OwnerHintsFields({ value, onChange }: { value: OwnerHints; onCha
       />
       <Field
         label="Type commercial"
+        icon="car-outline"
         value={value.model ?? ""}
         onChangeText={(model) => onChange({ ...value, model })}
         placeholder="PANDA"
@@ -27,6 +27,8 @@ export function OwnerHintsFields({ value, onChange }: { value: OwnerHints; onCha
       />
       <Field
         label="Type constructeur"
+        icon="barcode-outline"
+        helper="Le code juste sous le constructeur sur la carte grise."
         value={value.variant ?? ""}
         onChangeText={(variant) => onChange({ ...value, variant })}
         placeholder="312PXG110 P2F"
@@ -36,6 +38,7 @@ export function OwnerHintsFields({ value, onChange }: { value: OwnerHints; onCha
       />
       <Field
         label="1re mise en circulation"
+        icon="calendar-outline"
         value={value.firstRegistration ?? ""}
         onChangeText={(firstRegistration) => onChange({ ...value, firstRegistration })}
         placeholder="AAAA/MM/JJ"
