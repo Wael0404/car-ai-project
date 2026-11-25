@@ -84,6 +84,7 @@ export interface Vehicle {
   vin: string;
   nickname: string | null;
   color: string;
+  mileageKm: number | null;
   declared: OwnerHints;
   createdAt: string;
   status: "PENDING" | "READY" | "FAILED";
@@ -94,4 +95,29 @@ export interface Vehicle {
 export interface Tokens {
   accessToken: string;
   refreshToken: string;
+}
+
+export interface MaintenanceItem {
+  id: string;
+  name: string;
+  category: string;
+  action: "remplacer" | "controler" | "vidanger" | "nettoyer";
+  intervalKm: number | null;
+  intervalMonths: number | null;
+  note: string;
+  status: "overdue" | "soon" | "ok";
+  nextDueKm: number | null;
+  nextDueDate: string | null;
+  kmLeft: number | null;
+  lastDoneKm: number | null;
+  lastDoneAt: string | null;
+  unknownHistory: boolean;
+}
+
+export interface Maintenance {
+  status: "PENDING" | "READY" | "FAILED";
+  mileageKm: number | null;
+  notes?: string | null;
+  confidence?: string | null;
+  items: MaintenanceItem[];
 }

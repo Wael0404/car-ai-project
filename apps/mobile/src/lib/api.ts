@@ -1,5 +1,5 @@
 import * as SecureStore from "expo-secure-store";
-import type { OwnerHints, Tokens, Vehicle } from "./types";
+import type { Maintenance, OwnerHints, Tokens, Vehicle } from "./types";
 
 /** Set EXPO_PUBLIC_API_URL in apps/mobile/.env (use your PC's LAN IP on a real phone). */
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3100/v1";
@@ -112,7 +112,13 @@ export const api = {
   getVehicle: (id: string) => request<Vehicle>(`/vehicles/${id}`),
   addVehicle: (input: { vin: string; nickname?: string; color?: string } & OwnerHints) =>
     request<Vehicle>("/vehicles", { method: "POST", body: JSON.stringify(input) }),
-  updateVehicle: (id: string, input: { nickname?: string; color?: string }) =>
+  getMaintenance: (id: string) => request<Maintenance>(`/vehicles/${id}/maintenance`),
+  markMaintenanceDone: (id: string, itemId: string, km?: number) =>
+    request<void>(`/vehicles/${id}/maintenance/${encodeURIComponent(itemId)}/done`, {
+      method: "POST",
+      body: JSON.stringify(km === undefined ? {} : { km }),
+    }),
+  updateVehicle: (id: string, input: { nickname?: string; color?: string; mileageKm?: number }) =>
     request<Vehicle>(`/vehicles/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   researchAgain: (id: string, hints: OwnerHints) =>
     request<void>(`/vehicles/${id}/research`, { method: "POST", body: JSON.stringify(hints) }),

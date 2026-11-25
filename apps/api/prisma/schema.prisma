@@ -47,6 +47,10 @@ model Vehicle {
   declaredModel     String? @db.VarChar(60)
   declaredVariant   String? @db.VarChar(80)
   firstRegistration String? @db.VarChar(10)
+  /// Odometer reading entered by the owner (km), for the maintenance plan.
+  mileageKm         Int?
+  mileageUpdatedAt  DateTime?
+  maintenanceRecords MaintenanceRecord[]
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
@@ -116,4 +120,40 @@ model VehicleSpec {
   vehicles   Vehicle[]
 
   @@index([status])
+}
+
+enum PlanStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+/// Manufacturer-style maintenance schedule for one car version and engine,
+/// generated once by the AI agent and shared by every owner of that version.
+model MaintenancePlan {
+  /// "make|model|generation|variant|engine|fuel" in lower case.
+  key       String     @id @db.VarChar(250)
+  status    PlanStatus @default(PENDING)
+  /// [{ id, name, category, action, intervalKm, intervalMonths, note }]
+  items     Json?
+  notes     String?
+  confidence String?   @db.VarChar(10)
+  error     String?
+  attempts  Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([status])
+}
+
+/// "Done" marks: the owner did this maintenance item at this mileage.
+model MaintenanceRecord {
+  id        String   @id @default(uuid()) @db.Uuid
+  vehicleId String   @db.Uuid
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  itemId    String   @db.VarChar(60)
+  doneAtKm  Int
+  doneAt    DateTime @default(now())
+
+  @@index([vehicleId, itemId])
 }

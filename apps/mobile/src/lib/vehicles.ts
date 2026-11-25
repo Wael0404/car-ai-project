@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
-import type { OwnerHints, Vehicle } from "./types";
+import type { Maintenance, OwnerHints, Vehicle } from "./types";
 
 const POLL_MS = 4000;
 
@@ -39,10 +39,11 @@ export function useAddVehicle() {
 export function useUpdateVehicle(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { nickname?: string; color?: string }) => api.updateVehicle(id, input),
+    mutationFn: (input: { nickname?: string; color?: string; mileageKm?: number }) => api.updateVehicle(id, input),
     onSuccess: (vehicle) => {
       qc.setQueryData(["vehicles", id], vehicle);
       void qc.invalidateQueries({ queryKey: ["vehicles"], exact: true });
+      void qc.invalidateQueries({ queryKey: ["maintenance", id] });
     },
   });
 }
@@ -60,5 +61,23 @@ export function useDeleteVehicle() {
   return useMutation({
     mutationFn: api.deleteVehicle,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["vehicles"] }),
+  });
+}
+
+/** Maintenance plan of a car; polls while the agent is still building it. */
+export function useMaintenance(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["maintenance", id],
+    queryFn: () => api.getMaintenance(id),
+    enabled,
+    refetchInterval: (q) => ((q.state.data as Maintenance | undefined)?.status === "PENDING" ? POLL_MS : false),
+  });
+}
+
+export function useMarkMaintenanceDone(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, km }: { itemId: string; km?: number }) => api.markMaintenanceDone(id, itemId, km),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["maintenance", id] }),
   });
 }

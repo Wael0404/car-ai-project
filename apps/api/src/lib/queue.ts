@@ -73,3 +73,30 @@ export async function enqueueModel3DSearch(data: Model3DJobData): Promise<void> 
   if (previous && ((await previous.isFailed()) || (await previous.isCompleted()))) await previous.remove();
   await model3dQueue.add("search", data, { jobId });
 }
+
+// --- Maintenance plan (one job per car version + engine) ---
+
+export const MAINTENANCE_QUEUE = "maintenance-plan";
+
+export interface MaintenanceJobData {
+  key: string;
+  /** The VIN profile the plan is built for (VehicleProfile JSON). */
+  profile: unknown;
+}
+
+export const maintenanceQueue = new Queue<MaintenanceJobData>(MAINTENANCE_QUEUE, {
+  connection: createQueueConnection(),
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 60_000 },
+    removeOnComplete: { age: 24 * 3600, count: 10_000 },
+    removeOnFail: { age: 7 * 24 * 3600 },
+  },
+});
+
+export async function enqueueMaintenancePlan(data: MaintenanceJobData): Promise<void> {
+  const jobId = `mp-${Buffer.from(data.key).toString("base64url").slice(0, 180)}`;
+  const previous = await maintenanceQueue.getJob(jobId);
+  if (previous && ((await previous.isFailed()) || (await previous.isCompleted()))) await previous.remove();
+  await maintenanceQueue.add("plan", data, { jobId });
+}

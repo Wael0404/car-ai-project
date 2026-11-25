@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ActivityIndicator, Alert, Linking, ScrollView, Text, View } from "react-native";
 import { Car3D } from "@/components/Car3D";
 import { ColorPicker } from "@/components/ColorPicker";
+import { MaintenanceSection } from "@/components/MaintenanceSection";
 import { cleanHints, OwnerHintsFields } from "@/components/OwnerHintsFields";
 import { RequireAuth } from "@/components/RequireAuth";
 import { Body, Button, Card, Row } from "@/components/ui";
@@ -154,6 +155,7 @@ function Dashboard({ id }: { id: string }) {
           <Body style={{ flex: 1 }}>L'agent IA recherche les caractéristiques de votre voiture. Cela prend en général moins d'une minute.</Body>
         </Card>
       )}
+      {v.status === "READY" && v.profile && <MaintenanceSection vehicleId={v.id} mileageKm={v.mileageKm} />}
       {v.status === "READY" && v.profile && <Specs v={v} />}
       {v.status !== "PENDING" && <CorrectionCard key={v.status} v={v} />}
 
