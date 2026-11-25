@@ -56,6 +56,26 @@ async function buildGallery(data: Model3DJobData, log: Logger): Promise<boolean>
     log.info({ key: data.key, reason }, "No photos of this exact car");
     return false;
   }
+  // Download once and serve them ourselves: Wikimedia refuses the app's
+  // HTTP client (generic user agent), and hosting avoids hotlinking.
+  const dir = `photos/${slug(data.key)}`;
+  await mkdir(MODELS_DIR + dir, { recursive: true });
+  const stored: Array<{ view: (typeof views)[number]; file: string }> = [];
+  for (const view of views) {
+    const res = await fetch(view.photo.imageUrl, {
+      headers: { "user-agent": "CarAI/0.1 (car photo gallery; contact via app store listing)" },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok || !(res.headers.get("content-type") ?? "").startsWith("image/")) continue;
+    const file = `${dir}/${view.angle}.jpg`;
+    await writeFile(MODELS_DIR + file, Buffer.from(await res.arrayBuffer()));
+    stored.push({ view, file });
+  }
+  if (stored.length === 0) {
+    log.warn({ key: data.key }, "Gallery photos could not be downloaded");
+    return false;
+  }
+
   await prisma.carModel3D.update({
     where: { key: data.key },
     data: {
@@ -64,8 +84,9 @@ async function buildGallery(data: Model3DJobData, log: Logger): Promise<boolean>
       exactMatch: true,
       sketchfabUid: null,
       glbFile: null,
-      photos: views.map((v) => ({
+      photos: stored.map(({ view: v, file }) => ({
         angle: v.angle,
+        file,
         url: v.photo.imageUrl,
         pageUrl: v.photo.pageUrl,
         author: v.photo.author,
@@ -80,7 +101,7 @@ async function buildGallery(data: Model3DJobData, log: Logger): Promise<boolean>
       reason,
     },
   });
-  log.info({ key: data.key, views: views.map((v) => v.angle) }, "Photo gallery ready");
+  log.info({ key: data.key, views: stored.map((s) => s.view.angle) }, "Photo gallery ready");
   return true;
 }
 

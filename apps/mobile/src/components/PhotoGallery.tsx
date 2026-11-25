@@ -53,7 +53,7 @@ export function PhotoGallery({ photos, height }: { photos: GalleryPhoto[]; heigh
                 key={p.url}
                 source={{ uri: p.url }}
                 style={{ width, height }}
-                resizeMode="cover"
+                resizeMode="contain"
                 accessibilityLabel={`Photo ${ANGLE_LABEL[p.angle] ?? ""}`}
               />
             ))}
