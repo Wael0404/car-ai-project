@@ -125,8 +125,11 @@ function Dashboard({ id }: { id: string }) {
       </Card>
       {(v.model3d?.kind === "glb" || v.model3d?.kind === "sketchfab") && v.model3d.credit && (
         <Text style={{ color: t.muted, fontSize: 11 }} onPress={() => credit && Linking.openURL(credit.url)}>
-          Modèle 3D « {v.model3d.credit.title} » par {v.model3d.credit.author}
+          {v.model3d.kind === "glb" && v.model3d.generated
+            ? `Modèle 3D généré par IA à partir d'une photo de ${v.model3d.credit.author}`
+            : `Modèle 3D « ${v.model3d.credit.title} » par ${v.model3d.credit.author}`}
           {v.model3d.credit.license ? ` (${v.model3d.credit.license})` : ""}
+          {v.model3d.kind === "glb" && v.model3d.generated ? ", Wikimedia Commons" : ""}
           {v.model3d.kind === "sketchfab" ? ", fourni par Sketchfab" : ""}
         </Text>
       )}

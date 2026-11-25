@@ -48,7 +48,7 @@ export interface ModelCredit {
 }
 
 export type Model3D =
-  | { kind: "glb"; url: string; credit: ModelCredit | null }
+  | { kind: "glb"; url: string; credit: ModelCredit | null; generated?: boolean }
   | {
       kind: "sketchfab";
       uid: string;

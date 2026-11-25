@@ -3,6 +3,7 @@ import { Component, Suspense, useMemo, useRef, useState, type MutableRefObject, 
 import { PanResponder, StyleSheet, View } from "react-native";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { GlbViewer } from "@/components/GlbViewer";
 import { SketchfabViewer } from "@/components/SketchfabViewer";
 import type { BodyType, Model3D } from "@/lib/types";
 
@@ -192,6 +193,9 @@ function Turntable({
 /** Picks the best available view: Sketchfab model, own GLB, or generic car. */
 export function Car3D({ model3d, color, height = 280 }: { model3d: Model3D | null; color: string; height?: number }) {
   const [viewerFailed, setViewerFailed] = useState(false);
+  if (model3d?.kind === "glb" && !viewerFailed) {
+    return <GlbViewer url={model3d.url} height={height} onError={() => setViewerFailed(true)} />;
+  }
   if (model3d?.kind === "sketchfab" && !viewerFailed) {
     return <SketchfabViewer
         uid={model3d.uid}
@@ -202,7 +206,11 @@ export function Car3D({ model3d, color, height = 280 }: { model3d: Model3D | nul
       />;
   }
   const fallback: Model3D | null =
-    model3d?.kind === "sketchfab" ? { kind: "procedural", bodyType: model3d.bodyType } : model3d;
+    model3d?.kind === "sketchfab"
+      ? { kind: "procedural", bodyType: model3d.bodyType }
+      : model3d?.kind === "glb"
+        ? { kind: "procedural", bodyType: "hatchback" }
+        : model3d;
   return <Car3DCanvas model3d={fallback} color={color} height={height} />;
 }
 

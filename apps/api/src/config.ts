@@ -12,6 +12,8 @@ const EnvSchema = z.object({
   REDIS_URL: z.string().min(1),
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   CLAUDE_MODEL: z.string().default("claude-opus-5-5"),
+  /** Hugging Face token: enables 3D generation from photos (TRELLIS). */
+  HF_TOKEN: z.string().optional(),
   AGENT_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(4),
   SMTP_URL: z.string().optional().default(""),
   MAIL_FROM: z.string().default("Car AI <no-reply@example.com>"),
