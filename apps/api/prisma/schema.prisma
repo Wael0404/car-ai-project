@@ -171,11 +171,13 @@ model PartPrices {
   /// "<maintenance plan key>|<item id>"
   key       String     @id @db.VarChar(320)
   status    PlanStatus @default(PENDING)
-  /// [{ shop, product, brand, priceTnd, url }]
+  /// [{ part, shop, product, brand, reference, priceTnd, url, imageFile, enriched }]
   offers    Json?
   /// { minTnd, maxTnd, note } labour estimate at a garage
   labor     Json?
   note      String?
+  /// Original manufacturer (OE) part numbers found for this car
+  oemRefs   String[]   @default([])
   error     String?
   attempts  Int        @default(0)
   createdAt DateTime   @default(now())

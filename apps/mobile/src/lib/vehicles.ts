@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { api } from "./api";
 import type { Maintenance, OwnerHints, PartPrices, Vehicle } from "./types";
 
@@ -84,11 +85,23 @@ export function useMarkMaintenanceDone(id: string) {
 }
 
 /** Shop prices for one maintenance item; polls while the agent is searching. */
+/** Photos/references normally arrive in a few seconds; never poll for them longer than this. */
+const ENRICH_POLL_LIMIT_MS = 90_000;
+
 export function usePartPrices(vehicleId: string, itemId: string) {
+  const [openedAt] = useState(() => Date.now());
+  const enrichTimedOut = () => Date.now() - openedAt > ENRICH_POLL_LIMIT_MS;
   return useQuery({
     queryKey: ["prices", vehicleId, itemId],
     queryFn: () => api.getPartPrices(vehicleId, itemId),
-    refetchInterval: (q) => ((q.state.data as PartPrices | undefined)?.status === "PENDING" ? POLL_MS : false),
+    // Poll while the agent searches, and while photos/references are being added.
+    refetchInterval: (q) => {
+      const p = q.state.data as PartPrices | undefined;
+      if (p?.status === "PENDING") return POLL_MS;
+      return p?.enriching && !enrichTimedOut() ? 2500 : false;
+    },
+    // Past the limit, stop showing placeholders as "loading".
+    select: (p) => (p.enriching && enrichTimedOut() ? { ...p, enriching: false } : p),
   });
 }
 

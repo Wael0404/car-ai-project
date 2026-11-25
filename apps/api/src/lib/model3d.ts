@@ -80,6 +80,11 @@ const CDN_BASE = (process.env["MODELS_CDN_URL"] ?? "").replace(/\/$/, "");
 /** Development: the API itself serves apps/api/models at /models. */
 export const SERVE_MODELS_LOCALLY = process.env["MODELS_SERVE_LOCAL"] === "true";
 
+/** Public URL of a file stored in the models folder (photos, parts...), null without a CDN. */
+export function assetUrl(file: string): string | null {
+  return CDN_BASE ? `${CDN_BASE}/${file}` : null;
+}
+
 interface CatalogEntry {
   make: string;
   model: string;

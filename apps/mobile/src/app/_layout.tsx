@@ -7,6 +7,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { NavigationBar } from "expo-navigation-bar";
 import { router, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
@@ -23,6 +24,8 @@ function AppStack() {
   return (
     <>
       <StatusBar style={mode === "dark" ? "light" : "dark"} />
+      {/* Android: dark buttons on the white theme even when the phone is in dark mode. */}
+      <NavigationBar style={mode === "dark" ? "light" : "dark"} />
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: t.bg },

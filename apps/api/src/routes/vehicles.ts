@@ -1,13 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../lib/db.js";
-import { modelKey, resolveModel3D, type CatalogRow } from "../lib/model3d.js";
+import { assetUrl, modelKey, resolveModel3D, type CatalogRow } from "../lib/model3d.js";
+import { brandFromTitle, guessPart } from "../lib/parts.js";
 import { enqueueVinResearch } from "../lib/queue.js";
 import { normalizeCode } from "../lib/specReuse.js";
 import { buildReport, logEvent } from "../lib/history.js";
 import { computeDue, parseRegistrationDate, type PlanItem } from "../lib/maintenance.js";
 import { maintenanceKey } from "../maintenanceJobs.js";
-import { getOrQueuePrices } from "../priceJobs.js";
+import { getOrQueuePrices, type StoredOffer } from "../priceJobs.js";
 import type { VehicleProfile } from "../agent/schema.js";
 import { validateVin } from "../lib/vin.js";
 import type { Prisma } from "../generated/prisma/client.js";
@@ -312,10 +313,23 @@ export async function vehicleRoutes(app: FastifyInstance) {
     const item = Array.isArray(plan?.items) ? (plan!.items as unknown as PlanItem[]).find((i) => i.id === itemId) : undefined;
     if (!profile || !planKey || !item) return reply.code(404).send({ error: "Élément d'entretien introuvable." });
 
-    const row = await getOrQueuePrices(`${planKey}|${itemId}`, profile, item);
+    const { row, enriching } = await getOrQueuePrices(`${planKey}|${itemId}`, profile, item);
+    const offers = Array.isArray(row.offers) ? (row.offers as unknown as StoredOffer[]) : [];
     return {
       status: row.status,
-      offers: row.offers ?? [],
+      offers: offers.map((o) => ({
+        part: o.part || guessPart(o.product),
+        shop: o.shop,
+        product: o.product,
+        brand: o.brand ?? brandFromTitle(o.product, o.reference),
+        reference: o.reference ?? null,
+        priceTnd: o.priceTnd,
+        url: o.url,
+        image: o.imageFile ? assetUrl(o.imageFile) : null,
+      })),
+      oemRefs: row.oemRefs ?? [],
+      /** Photos/references are being added: poll again in a few seconds. */
+      enriching,
       labor: row.labor ?? null,
       note: row.note,
       updatedAt: row.updatedAt,

@@ -2,11 +2,12 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { Linking, Pressable, View } from "react-native";
+import { Linking, View } from "react-native";
 import { CATEGORY_ICON } from "@/components/MaintenanceSection";
+import { PartOffers } from "@/components/PartOffers";
 import { RequireAuth } from "@/components/RequireAuth";
 import { RobotGuide } from "@/components/Robot";
-import { Button, Card, Pill, Screen, SectionTitle, Skeleton, Txt } from "@/components/ui";
+import { Button, Card, Pill, Screen, SectionTitle, Skeleton, Txt, type IconName } from "@/components/ui";
 import { tnd } from "@/lib/format";
 import { radius, space, useTheme } from "@/lib/theme";
 import type { Garage, PartPrices } from "@/lib/types";
@@ -28,7 +29,7 @@ const GARAGE_QUERY: Record<string, string> = {
 
 const mapsSearchUrl = (query: string) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 
-function Offers({ data }: { data: PartPrices }) {
+function Offers({ data, icon }: { data: PartPrices; icon: IconName }) {
   const t = useTheme();
   if (data.status === "PENDING") {
     return (
@@ -46,7 +47,6 @@ function Offers({ data }: { data: PartPrices }) {
       </Card>
     );
   }
-  const cheapest = data.offers.find((o) => o.priceTnd !== null)?.priceTnd ?? null;
   return (
     <View style={{ gap: space.md }}>
       {data.offers.length === 0 ? (
@@ -54,44 +54,7 @@ function Offers({ data }: { data: PartPrices }) {
           <Txt tone="muted">Aucun prix en ligne trouvé pour cette pièce. Demandez un devis à un garage.</Txt>
         </Card>
       ) : (
-        <Card padded={false}>
-          {data.offers.map((o, i) => (
-            <Pressable
-              key={o.url}
-              accessibilityRole="link"
-              accessibilityLabel={`${o.product}, ${o.priceTnd !== null ? tnd(o.priceTnd) : "prix sur le site"}, chez ${o.shop}`}
-              onPress={() => Linking.openURL(o.url)}
-              style={({ pressed }) => ({
-                flexDirection: "row",
-                alignItems: "center",
-                gap: space.md,
-                padding: space.lg,
-                borderTopWidth: i === 0 ? 0 : 0.5,
-                borderTopColor: t.border,
-                opacity: pressed ? 0.7 : 1,
-              })}
-            >
-              <View style={{ flex: 1, gap: 4 }}>
-                <Txt variant="bodyStrong" numberOfLines={2}>
-                  {o.product}
-                </Txt>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Ionicons name="storefront-outline" size={14} color={t.muted} />
-                  <Txt variant="caption" tone="muted">
-                    {o.shop}
-                  </Txt>
-                  {o.priceTnd !== null && o.priceTnd === cheapest ? <Pill label="Le moins cher" tone="success" /> : null}
-                </View>
-              </View>
-              <View style={{ alignItems: "flex-end", gap: 2 }}>
-                <Txt variant="heading" style={{ fontVariant: ["tabular-nums"] }}>
-                  {o.priceTnd !== null ? tnd(o.priceTnd) : "—"}
-                </Txt>
-                <Ionicons name="open-outline" size={16} color={t.primary} />
-              </View>
-            </Pressable>
-          ))}
-        </Card>
+        <PartOffers data={data} icon={icon} />
       )}
 
       {data.labor && (data.labor.minTnd !== null || data.labor.maxTnd !== null) && (
@@ -246,12 +209,13 @@ function ItemScreen({ vehicleId, itemId }: { vehicleId: string; itemId: string }
         </RobotGuide>
       ) : (
         <RobotGuide mood="happy" compact>
-          Touchez une offre pour l'ouvrir sur le site de la boutique, puis choisissez un garage ci-dessous.
+          Voici les pièces à changer, avec leur photo et leur référence. Touchez une pièce pour l'agrandir, puis choisissez
+          un garage ci-dessous.
         </RobotGuide>
       )}
 
-      <SectionTitle>Prix des pièces</SectionTitle>
-      <Offers data={prices.data} />
+      <SectionTitle>Pièces à changer</SectionTitle>
+      <Offers data={prices.data} icon={CATEGORY_ICON[item.category] ?? "build-outline"} />
 
       <SectionTitle>Où faire ce changement</SectionTitle>
       <Button label="Voir les garages sur Google Maps" icon="map-outline" onPress={() => Linking.openURL(mapsSearchUrl(query))} />

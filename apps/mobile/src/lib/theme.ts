@@ -55,13 +55,13 @@ const dark: typeof light = {
 
 export type Theme = typeof light;
 
-/** The owner can force light or dark, or follow the phone ("system"). */
+/** Light (white) by default; the owner can choose dark, or follow the phone ("system"). */
 export type ThemePreference = "system" | "light" | "dark";
 
 export const ThemePreferenceContext = createContext<{
   preference: ThemePreference;
   setPreference: (p: ThemePreference) => void;
-}>({ preference: "system", setPreference: () => {} });
+}>({ preference: "light", setPreference: () => {} });
 
 export function useThemePreference() {
   return useContext(ThemePreferenceContext);

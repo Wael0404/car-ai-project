@@ -123,15 +123,26 @@ export interface Maintenance {
 }
 
 export interface PartOffer {
+  /** Which part this offer is for, e.g. "Filtre à huile". */
+  part: string;
   shop: string;
   product: string;
+  brand: string | null;
+  /** Maker's part number, e.g. "L008". */
+  reference: string | null;
   priceTnd: number | null;
   url: string;
+  /** Photo of the part (copied to our server). */
+  image: string | null;
 }
 
 export interface PartPrices {
   status: "PENDING" | "READY" | "FAILED";
   offers: PartOffer[];
+  /** Original manufacturer (OE) part numbers for this car. */
+  oemRefs: string[];
+  /** Photos and references are being added: the app polls meanwhile. */
+  enriching: boolean;
   labor: { minTnd: number | null; maxTnd: number | null; note: string } | null;
   note: string | null;
   updatedAt: string;

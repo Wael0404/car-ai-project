@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { radius, space, useTheme, useThemePreference, type ThemePreference } from "@/lib/theme";
 
 const OPTIONS: Array<{ value: ThemePreference; label: string; hint: string; icon: IconName }> = [
-  { value: "light", label: "Clair", hint: "Fond clair, idéal en plein jour", icon: "sunny-outline" },
+  { value: "light", label: "Clair (par défaut)", hint: "Fond blanc, idéal en plein jour", icon: "sunny-outline" },
   { value: "dark", label: "Sombre", hint: "Fond sombre, reposant le soir", icon: "moon-outline" },
   { value: "system", label: "Automatique", hint: "Suit le réglage du téléphone", icon: "phone-portrait-outline" },
 ];

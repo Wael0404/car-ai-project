@@ -4,4 +4,5 @@ dist
 src/generated
 models/generated
 models/photos
+models/parts
 backups

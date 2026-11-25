@@ -1,5 +1,13 @@
+import { createHash } from "node:crypto";
 import { Queue } from "bullmq";
 import { createQueueConnection } from "./redis.js";
+
+/**
+ * Stable, collision-free job id part for a long key. (Cutting a base64 key
+ * made two items of the same car version share an id, so BullMQ silently
+ * dropped the second job.)
+ */
+const jobKey = (key: string) => createHash("sha256").update(key).digest("base64url");
 
 export const VIN_QUEUE = "vin-research";
 
@@ -68,7 +76,7 @@ export const model3dQueue = new Queue<Model3DJobData>(MODEL3D_QUEUE, {
 
 export async function enqueueModel3DSearch(data: Model3DJobData): Promise<void> {
   // BullMQ job ids cannot contain ":"; the key is hashed into a safe id.
-  const jobId = `m3d-${Buffer.from(data.key).toString("base64url").slice(0, 180)}`;
+  const jobId = `m3d-${jobKey(data.key)}`;
   const previous = await model3dQueue.getJob(jobId);
   if (previous && ((await previous.isFailed()) || (await previous.isCompleted()))) await previous.remove();
   await model3dQueue.add("search", data, { jobId });
@@ -95,7 +103,7 @@ export const maintenanceQueue = new Queue<MaintenanceJobData>(MAINTENANCE_QUEUE,
 });
 
 export async function enqueueMaintenancePlan(data: MaintenanceJobData): Promise<void> {
-  const jobId = `mp-${Buffer.from(data.key).toString("base64url").slice(0, 180)}`;
+  const jobId = `mp-${jobKey(data.key)}`;
   const previous = await maintenanceQueue.getJob(jobId);
   if (previous && ((await previous.isFailed()) || (await previous.isCompleted()))) await previous.remove();
   await maintenanceQueue.add("plan", data, { jobId });
@@ -122,8 +130,34 @@ export const priceQueue = new Queue<PriceJobData>(PRICE_QUEUE, {
 });
 
 export async function enqueuePriceLookup(data: PriceJobData): Promise<void> {
-  const jobId = `pp-${Buffer.from(data.key).toString("base64url").slice(0, 180)}`;
+  const jobId = `pp-${jobKey(data.key)}`;
   const previous = await priceQueue.getJob(jobId);
   if (previous && ((await previous.isFailed()) || (await previous.isCompleted()))) await previous.remove();
   await priceQueue.add("prices", data, { jobId });
+}
+
+// --- Part photos/references (reads shop pages, no AI). Own queue, so a worker
+// running older code can never take these jobs for paid price lookups. ---
+
+export const PRICE_ENRICH_QUEUE = "part-price-enrich";
+
+export interface PriceEnrichJobData {
+  key: string;
+}
+
+export const priceEnrichQueue = new Queue<PriceEnrichJobData>(PRICE_ENRICH_QUEUE, {
+  connection: createQueueConnection(),
+  defaultJobOptions: {
+    attempts: 1,
+    removeOnComplete: { age: 3600, count: 10_000 },
+    removeOnFail: { age: 24 * 3600 },
+  },
+});
+
+/** Photos and references for offers saved before that feature existed (or not read yet). */
+export async function enqueuePriceEnrichment(key: string): Promise<void> {
+  const jobId = `pe-${jobKey(key)}`;
+  const previous = await priceEnrichQueue.getJob(jobId);
+  if (previous && ((await previous.isFailed()) || (await previous.isCompleted()))) await previous.remove();
+  await priceEnrichQueue.add("enrich", { key }, { jobId });
 }

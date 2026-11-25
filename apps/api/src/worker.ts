@@ -12,7 +12,9 @@ import { prisma } from "./lib/db.js";
 import {
   MAINTENANCE_QUEUE,
   MODEL3D_QUEUE,
+  PRICE_ENRICH_QUEUE,
   PRICE_QUEUE,
+  type PriceEnrichJobData,
   type PriceJobData,
   VIN_QUEUE,
   type MaintenanceJobData,
@@ -21,7 +23,7 @@ import {
 } from "./lib/queue.js";
 import { ensureModel3D, runModel3DSearch } from "./model3dJobs.js";
 import { ensureMaintenancePlan, runMaintenancePlan } from "./maintenanceJobs.js";
-import { runPriceLookup } from "./priceJobs.js";
+import { runPriceEnrichment, runPriceLookup } from "./priceJobs.js";
 import { findReusableProfile } from "./lib/specReuse.js";
 import { logEventForVin } from "./lib/history.js";
 import { createQueueConnection } from "./lib/redis.js";
@@ -101,6 +103,14 @@ const priceWorker = new Worker<PriceJobData>(
 );
 priceWorker.on("failed", (job, err) => log.error({ key: job?.data.key, err: err.message }, "Price job failed"));
 
+/** Fifth queue: part photos + references from the shop pages (no AI, free). */
+const priceEnrichWorker = new Worker<PriceEnrichJobData>(
+  PRICE_ENRICH_QUEUE,
+  async (job) => runPriceEnrichment(job.data.key, log),
+  { connection: createQueueConnection(), concurrency: 3 },
+);
+priceEnrichWorker.on("failed", (job, err) => log.error({ key: job?.data.key, err: err.message }, "Enrich job failed"));
+
 /** Third queue: maintenance plan per car version (one cheap AI run each). */
 const maintenanceWorker = new Worker<MaintenanceJobData>(
   MAINTENANCE_QUEUE,
@@ -127,7 +137,13 @@ model3dWorker.on("failed", (job, err) => log.error({ key: job?.data.key, err: er
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, async () => {
     log.info("Stopping worker (waiting for running jobs)");
-    await Promise.all([worker.close(), model3dWorker.close(), maintenanceWorker.close(), priceWorker.close()]);
+    await Promise.all([
+      worker.close(),
+      model3dWorker.close(),
+      maintenanceWorker.close(),
+      priceWorker.close(),
+      priceEnrichWorker.close(),
+    ]);
     await prisma.$disconnect();
     process.exit(0);
   });
