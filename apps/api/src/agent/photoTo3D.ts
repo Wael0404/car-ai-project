@@ -3,6 +3,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { Client, handle_file } from "@gradio/client";
 import { z } from "zod";
 import { config } from "../config.js";
+import { fallbackParams } from "../lib/claude.js";
 import { searchCarPhotos, type CarPhoto } from "./commons.js";
 import type { CarIdentity } from "./modelFinder.js";
 
@@ -75,10 +76,9 @@ export async function findCarPhoto(
   content.push({ type: "text", text: "Quelle photo utiliser ? Réponds avec son index, ou -1." });
 
   const response = await client.beta.messages.parse({
-    model: config.CLAUDE_MODEL,
+    model: config.CLAUDE_VISION_MODEL,
     max_tokens: 4000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
+    ...fallbackParams(config.CLAUDE_VISION_MODEL),
     output_config: { effort: "low", format: betaZodOutputFormat(PhotoChoice) },
     system: SYSTEM,
     messages: [{ role: "user", content }],

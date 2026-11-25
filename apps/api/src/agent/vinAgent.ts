@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { config } from "../config.js";
+import { fallbackParams } from "../lib/claude.js";
 import type { OwnerHints } from "../lib/queue.js";
 import { decodeVinNhtsa, type NhtsaDecode } from "./nhtsa.js";
 import { VehicleProfileSchema, type VehicleProfile } from "./schema.js";
@@ -10,10 +11,7 @@ const client = new Anthropic({ maxRetries: 3 });
 
 // Server-side fallback: if the main model declines, the API re-runs the
 // request on a fallback model inside the same call.
-const FALLBACK: Pick<Anthropic.Beta.MessageCreateParams, "betas" | "fallbacks"> = {
-  betas: ["server-side-fallback-2026-07-01"],
-  fallbacks: "default",
-};
+const FALLBACK = fallbackParams(config.CLAUDE_MODEL);
 
 const RESEARCH_SYSTEM = `Tu es un expert automobile chargé d'identifier précisément un véhicule à partir de son numéro VIN.
 
@@ -66,7 +64,7 @@ async function research(vin: string, nhtsa: NhtsaDecode, hints?: OwnerHints): Pr
       output_config: { effort: "medium" },
       max_iterations: 8,
       system: RESEARCH_SYSTEM,
-      tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 6 }],
+      tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 4 }],
       messages: [
         {
           role: "user",

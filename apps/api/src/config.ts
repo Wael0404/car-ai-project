@@ -11,7 +11,10 @@ const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1),
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
-  CLAUDE_MODEL: z.string().default("claude-opus-5-5"),
+  /** VIN research (web search + reasoning). Sonnet: half the price of Opus. */
+  CLAUDE_MODEL: z.string().default("claude-sonnet-5-5"),
+  /** Image checks (3D model and photo choice): simple vision task, cheapest model. */
+  CLAUDE_VISION_MODEL: z.string().default("claude-haiku-5-5"),
   /** Hugging Face token: enables 3D generation from photos (TRELLIS). */
   HF_TOKEN: z.string().optional(),
   AGENT_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(4),
