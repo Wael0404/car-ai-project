@@ -26,6 +26,7 @@ import { ensureMaintenancePlan, runMaintenancePlan } from "./maintenanceJobs.js"
 import { runPriceEnrichment, runPriceLookup } from "./priceJobs.js";
 import { findReusableProfile } from "./lib/specReuse.js";
 import { logEventForVin } from "./lib/history.js";
+import { ensureIndicativePhotos } from "./lib/indicativePhotos.js";
 import { createQueueConnection } from "./lib/redis.js";
 
 const log = pino({ name: "vin-worker" });
@@ -150,6 +151,9 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 log.info({ concurrency: config.AGENT_CONCURRENCY }, "VIN worker started");
+
+// Typical part photos ("Photo indicative") so a part always has a photo. Free, once.
+void ensureIndicativePhotos(log).catch((err: Error) => log.warn({ err: err.message }, "Indicative photos not ready"));
 
 // Cars researched before the 3D agent existed: queue their 3D model search.
 const ready = await prisma.vehicleSpec.findMany({ where: { status: "READY" }, select: { data: true } });

@@ -52,8 +52,9 @@ export async function safeFetch(
   url: string,
   accept: string,
   maxBytes: number,
+  timeoutMs: number = TIMEOUT_MS,
 ): Promise<{ body: Buffer; contentType: string; finalUrl: string } | null> {
-  const signal = AbortSignal.timeout(TIMEOUT_MS);
+  const signal = AbortSignal.timeout(timeoutMs);
   let current = url;
   for (let hop = 0; hop < 4; hop++) {
     if (!isAllowedShopUrl(current)) return null;
@@ -290,6 +291,94 @@ export function pageContradicts(productTitle: string, agentReference: string | n
     return !squash(info.pageName).includes(squash(agentReference));
   }
   return false;
+}
+
+/* ------------------------------ Shop search ------------------------------ */
+
+const words = (s: string) =>
+  ` ${s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim()} `;
+
+/**
+ * The text contains this exact part number as whole words: "P696" is in
+ * "MISFAT P696 Filtre" or "/81062-p696-filtre", not in "P696A" (another
+ * variant); "20-01-135" matches "20 01 135".
+ */
+export function hasReference(text: string, reference: string): boolean {
+  const ref = words(reference);
+  return ref.trim().length >= 3 && words(text).includes(ref);
+}
+
+/**
+ * Shops whose search page lists products with their real photo
+ * (PrestaShop "product-miniature"). Others either block robots
+ * (autopart.tn, tomobile.store) or show only a category image (vidange.tn).
+ */
+// karhabtk first: it answers in under a second (bestoil can take ~15 s).
+const SEARCH_PAGES = [
+  "https://www.karhabtk.tn/recherche?controller=search&s=",
+  "https://www.bestoil.tn/recherche?controller=search&s=",
+];
+
+export interface SearchHit {
+  title: string;
+  productUrl: string;
+  imageUrl: string;
+}
+
+/** Products of a PrestaShop search page: title, link and large photo. */
+export function parseSearchResults(html: string, pageUrl: string): SearchHit[] {
+  const hits: SearchHit[] = [];
+  let at = html.indexOf('<article class="product-miniature');
+  while (at >= 0 && hits.length < 24) {
+    const next = html.indexOf('<article class="product-miniature', at + 10);
+    const block = html.slice(at, next < 0 ? Math.min(html.length, at + 8000) : Math.min(next, at + 8000));
+    const tags = startTags(block);
+    const link = tags.find((t) => t.name === "a" && /product-thumbnail/.test(attr(t.text, "class") ?? ""));
+    const img = tags.find((t) => t.name === "img");
+    const href = link ? attr(link.text, "href") : null;
+    const src = img ? (attr(img.text, "data-full-size-image-url") ?? attr(img.text, "data-src") ?? attr(img.text, "src")) : null;
+    const title = img ? attr(img.text, "alt") : null;
+    const imageUrl = cleanImage(src, pageUrl);
+    if (href && imageUrl && title) {
+      try {
+        hits.push({ title, productUrl: new URL(href, pageUrl).toString(), imageUrl });
+      } catch {
+        // bad link: skip
+      }
+    }
+    at = next;
+  }
+  return hits;
+}
+
+/**
+ * First product whose title or link contains `mustContain` (a part number:
+ * "P362" must not match "R362"), or the first product accepted by a test.
+ * Shop search results are NOT sorted by relevance (searching brake discs can
+ * list air filters first), so a result is always checked, never taken blind.
+ */
+export async function searchShops(query: string, accept: string | ((hit: SearchHit) => boolean)): Promise<SearchHit | null> {
+  let test: (h: SearchHit) => boolean;
+  if (typeof accept === "string") {
+    if (squash(accept).length < 3) return null;
+    test = (h) => hasReference(`${h.title} ${h.productUrl}`, accept);
+  } else {
+    test = accept;
+  }
+  for (const base of SEARCH_PAGES) {
+    const url = base + encodeURIComponent(query.slice(0, 60));
+    // Search pages are slow on some shops (many results): longer budget.
+    const page = await safeFetch(url, "text/html", MAX_HTML_BYTES, 25_000).catch(() => null);
+    if (!page || !/html/i.test(page.contentType)) continue;
+    const hit = parseSearchResults(page.body.toString("utf8"), page.finalUrl).find(test);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 /** Null when the page could not be read (network error, 403, too big...): retry later. */

@@ -16,7 +16,22 @@ import type { PartOffer, PartPrices } from "@/lib/types";
 const refLabel = (o: PartOffer) => [o.brand, o.reference].filter(Boolean).join(" ");
 
 /** Product photo on a white tile (shop photos have white backgrounds, also in dark mode). */
-function PartPhoto({ uri, size, pending, icon, label }: { uri: string | null; size: number; pending: boolean; icon: IconName; label: string }) {
+function PartPhoto({
+  uri,
+  size,
+  pending,
+  icon,
+  label,
+  indicative,
+}: {
+  uri: string | null;
+  size: number;
+  pending: boolean;
+  icon: IconName;
+  label: string;
+  /** Typical photo of this kind of part, not this exact product. */
+  indicative?: boolean;
+}) {
   const t = useTheme();
   const [failedUri, setFailedUri] = useState<string | null>(null);
   if (uri && failedUri !== uri) {
@@ -26,11 +41,18 @@ function PartPhoto({ uri, size, pending, icon, label }: { uri: string | null; si
       >
         <Image
           source={{ uri }}
-          style={{ width: "100%", height: "100%" }}
+          style={{ width: "100%", height: "100%", opacity: indicative ? 0.85 : 1 }}
           resizeMode="contain"
-          accessibilityLabel={label}
+          accessibilityLabel={indicative ? `Photo indicative : ${label}` : label}
           onError={() => setFailedUri(uri)}
         />
+        {indicative ? (
+          <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: "rgba(14,23,38,0.72)", paddingVertical: 2 }}>
+            <Txt style={{ color: "#FFFFFF", fontSize: size < 100 ? 9 : 12, lineHeight: size < 100 ? 12 : 16, textAlign: "center", fontFamily: font.semibold }}>
+              {size < 100 ? "Indicative" : "Photo indicative"}
+            </Txt>
+          </View>
+        ) : null}
       </View>
     );
   }
@@ -111,7 +133,12 @@ function OfferSheet({ offer, icon, pending, onClose }: { offer: PartOffer; icon:
           <ScrollView contentContainerStyle={{ padding: space.lg, paddingBottom: space.lg + insets.bottom, gap: space.lg }}>
             <View style={{ alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: t.border }} />
             <View style={{ alignItems: "center" }}>
-              <PartPhoto uri={offer.image} size={photo} pending={pending} icon={icon} label={`Photo : ${offer.product}`} />
+              <PartPhoto uri={offer.image} size={photo} pending={pending} icon={icon} label={`Photo : ${offer.product}`} indicative={offer.imageKind === "indicative"} />
+              {offer.imageKind === "indicative" ? (
+                <Txt variant="caption" tone="muted" style={{ textAlign: "center", marginTop: space.sm }}>
+                  Photo indicative : la boutique ne montre pas la pièce. Vérifiez la référence sur son site.
+                </Txt>
+              ) : null}
             </View>
             <View style={{ gap: space.sm }}>
               <Txt variant="label" tone="muted">
@@ -188,7 +215,7 @@ function OfferRow({
         backgroundColor: pressed ? t.surface2 : "transparent",
       })}
     >
-      <PartPhoto uri={offer.image} size={72} pending={pending} icon={icon} label={`Photo : ${offer.product}`} />
+      <PartPhoto uri={offer.image} size={72} pending={pending} icon={icon} label={`Photo : ${offer.product}`} indicative={offer.imageKind === "indicative"} />
       <View style={{ flex: 1, gap: 6 }}>
         <Txt variant="bodyStrong" numberOfLines={2}>
           {offer.product}

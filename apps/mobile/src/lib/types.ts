@@ -140,6 +140,8 @@ export interface PartOffer {
   url: string;
   /** Photo of the part (copied to our server). */
   image: string | null;
+  /** "exact": this product; "indicative": a typical photo of this kind of part. */
+  imageKind: "exact" | "indicative" | null;
 }
 
 export interface PartPrices {

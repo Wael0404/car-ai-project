@@ -4,7 +4,7 @@ import type { VehicleProfile } from "./agent/schema.js";
 import { prisma } from "./lib/db.js";
 import type { PlanItem } from "./lib/maintenance.js";
 import { storePartImage } from "./lib/partImages.js";
-import { fetchProductInfo, isAllowedShopUrl, pageContradicts } from "./lib/productPage.js";
+import { fetchProductInfo, isAllowedShopUrl, pageContradicts, searchShops, squash } from "./lib/productPage.js";
 import { enqueuePriceEnrichment, enqueuePriceLookup, type PriceJobData } from "./lib/queue.js";
 
 /** Prices change slowly: a lookup is reused 30 days, then refreshed on the next view. */
@@ -23,14 +23,24 @@ export interface StoredOffer {
   imageFile?: string | null;
   /** True once the product page was read (photo/reference), even if nothing was found. */
   enriched?: boolean;
+  /** Version of the enrichment that ran (older offers are enriched again). */
+  enrichVersion?: number;
   /** Failed attempts to read the page (it is given up after MAX_ENRICH_TRIES). */
   enrichTries?: number;
+  /** A shop search by reference was already tried for this offer. */
+  refSearched?: boolean;
 }
 
 const MAX_ENRICH_TRIES = 2;
+/** 2: photo by same reference / shop search. 3: photos trimmed in two passes. */
+export const ENRICH_VERSION = 3;
+/** Shop searches by reference per lookup (polite to the shop, fast). */
+const MAX_REF_SEARCHES = 4;
+
+const isCurrent = (o: StoredOffer) => o.enriched === true && (o.enrichVersion ?? 1) >= ENRICH_VERSION;
 
 export const needsEnrichment = (offers: unknown): boolean =>
-  Array.isArray(offers) && offers.some((o) => !(o as StoredOffer).enriched);
+  Array.isArray(offers) && offers.some((o) => !isCurrent(o as StoredOffer));
 
 /**
  * Returns the cached prices, or queues a lookup (only when an owner opens the
@@ -57,19 +67,29 @@ export async function getOrQueuePrices(key: string, profile: VehicleProfile, ite
   return { row: saved, enriching: false };
 }
 
-/** Reads each product page (3 at a time) for the part photo and reference. */
+/**
+ * Photo and reference of each offer, free (no AI):
+ * 1. the shop's product page (3 at a time);
+ * 2. the photo of another offer with the same reference;
+ * 3. a shop search by reference (only a product whose title has that exact reference).
+ * When none works, the app shows a typical photo of the part ("Photo indicative").
+ */
 export async function enrichOffers(offers: StoredOffer[], log: Logger): Promise<StoredOffer[]> {
   const out: StoredOffer[] = [];
   for (let i = 0; i < offers.length; i += 3) {
     const batch = await Promise.all(
-      offers.slice(i, i + 3).map(async (o): Promise<StoredOffer> => {
-        if (o.enriched) return o;
-        if (!isAllowedShopUrl(o.url)) return { ...o, enriched: true };
+      offers.slice(i, i + 3).map(async (src): Promise<StoredOffer> => {
+        if (isCurrent(src)) return src;
+        // Offer read by an older version: start again (new photo encoding, new fallbacks).
+        const o: StoredOffer =
+          (src.enrichVersion ?? 1) < ENRICH_VERSION ? { ...src, enriched: false, enrichTries: 0, imageFile: null, refSearched: false } : src;
+        const done = (x: StoredOffer): StoredOffer => ({ ...x, enriched: true, enrichVersion: ENRICH_VERSION });
+        if (!isAllowedShopUrl(o.url)) return done(o);
         // A temporary failure (timeout, 429/503, disk) is retried once on a later view.
         const failed = (why: string): StoredOffer => {
           const tries = (o.enrichTries ?? 0) + 1;
           log.warn({ url: o.url, why, tries }, "Product page not read");
-          return { ...o, enrichTries: tries, enriched: tries >= MAX_ENRICH_TRIES };
+          return tries >= MAX_ENRICH_TRIES ? done({ ...o, enrichTries: tries }) : { ...o, enrichTries: tries, enriched: false };
         };
         try {
           const info = await fetchProductInfo(o.url, o.product);
@@ -77,7 +97,7 @@ export async function enrichOffers(offers: StoredOffer[], log: Logger): Promise<
           if (pageContradicts(o.product, o.reference, info)) {
             // The link shows another product: keep the agent's data, no photo.
             log.warn({ url: o.url, product: o.product, page: info.pageName }, "Product page does not match the offer");
-            return { ...o, imageFile: null, enriched: true };
+            return done({ ...o, imageFile: null });
           }
           let imageFile: string | null = null;
           if (info.imageUrl) {
@@ -87,20 +107,51 @@ export async function enrichOffers(offers: StoredOffer[], log: Logger): Promise<
               return failed(`image: ${(err as Error).message}`);
             }
           }
-          return {
+          return done({
             ...o,
             // The agent's reference comes from the title; the page's from the shop's data.
             reference: o.reference ?? info.reference,
             brand: o.brand ?? info.brand,
             imageFile,
-            enriched: true,
-          };
+          });
         } catch (err) {
           return failed((err as Error).message);
         }
       }),
     );
     out.push(...batch);
+  }
+
+  // 2. Same reference elsewhere in this lookup (e.g. MISFAT P362 sold by two shops).
+  const key = (ref: string | null | undefined) => (ref ? squash(ref) : "");
+  const photoByRef = new Map<string, string>();
+  for (const o of out) if (o.imageFile && key(o.reference).length >= 3) photoByRef.set(key(o.reference), o.imageFile);
+  for (const o of out) {
+    if (!o.imageFile && photoByRef.has(key(o.reference))) o.imageFile = photoByRef.get(key(o.reference))!;
+  }
+
+  // 3. Shop search by reference (once per offer), also when its page is blocked.
+  let searches = 0;
+  for (const o of out) {
+    if (o.imageFile || o.refSearched || key(o.reference).length < 3 || searches >= MAX_REF_SEARCHES) continue;
+    const ref = o.reference!;
+    if (photoByRef.has(key(ref))) {
+      o.imageFile = photoByRef.get(key(ref))!;
+      continue;
+    }
+    searches++;
+    o.refSearched = true;
+    try {
+      const hit = await searchShops(ref, ref);
+      const file = hit ? await storePartImage(hit.imageUrl) : null;
+      if (file) {
+        o.imageFile = file;
+        photoByRef.set(key(ref), file);
+        log.info({ ref, found: hit!.productUrl }, "Part photo found by reference");
+      }
+    } catch (err) {
+      log.warn({ ref, err: (err as Error).message }, "Search by reference failed");
+    }
   }
   return out;
 }

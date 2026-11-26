@@ -14,11 +14,37 @@ import { safeFetch } from "./productPage.js";
 
 const MAX_IMAGE_BYTES = 6_000_000;
 const SIZE = 480;
+const PAD = 24;
 const ACCEPTED = /^image\/(jpeg|jpg|png|webp|avif|gif|heic|heif)\b/i;
+
+/** Product photo filling the square: white margins cut, then a small even padding. */
+async function encode(input: Buffer): Promise<Buffer> {
+  // Two passes: sharp may trim before flattening in a single pipeline, and a
+  // transparent background is then never cut.
+  const flat = await sharp(input, { limitInputPixels: 40_000_000, failOn: "error" })
+    .rotate()
+    .flatten({ background: "#ffffff" })
+    .png()
+    .toBuffer();
+  let trimmed: Buffer;
+  try {
+    // Threshold 30 also removes the light grey boxes some shops put around the part.
+    trimmed = await sharp(flat).trim({ background: "#ffffff", threshold: 30 }).png().toBuffer();
+  } catch {
+    trimmed = flat; // a plain image has nothing to trim
+  }
+  return sharp(trimmed)
+    .resize(SIZE - 2 * PAD, SIZE - 2 * PAD, { fit: "inside", withoutEnlargement: false })
+    .extend({ top: PAD, bottom: PAD, left: PAD, right: PAD, background: "#ffffff" })
+    .flatten({ background: "#ffffff" })
+    .jpeg({ quality: 82, mozjpeg: true })
+    .toBuffer();
+}
 
 /** Returns the file path relative to the models folder ("parts/ab12.jpg"), or null. */
 export async function storePartImage(imageUrl: string): Promise<string | null> {
-  const name = `${createHash("sha256").update(imageUrl).digest("hex").slice(0, 24)}.jpg`;
+  // "-3": encoding version (trimmed in two passes); older files are simply not reused.
+  const name = `${createHash("sha256").update(imageUrl).digest("hex").slice(0, 24)}-3.jpg`;
   const rel = `parts/${name}`;
   const file = path.join(MODELS_DIR, "parts", name);
   try {
@@ -31,12 +57,7 @@ export async function storePartImage(imageUrl: string): Promise<string | null> {
   const res = await safeFetch(imageUrl, "image/avif,image/webp,image/jpeg,image/png,image/*;q=0.8", MAX_IMAGE_BYTES);
   if (!res || !ACCEPTED.test(res.contentType)) return null;
 
-  const jpeg = await sharp(res.body, { limitInputPixels: 40_000_000, failOn: "error" })
-    .rotate()
-    .resize(SIZE, SIZE, { fit: "inside", withoutEnlargement: true })
-    .flatten({ background: "#ffffff" }) // transparent PNGs: white like the shops
-    .jpeg({ quality: 82, mozjpeg: true })
-    .toBuffer();
+  const jpeg = await encode(res.body);
   await mkdir(path.dirname(file), { recursive: true });
   // Write then rename (atomic): a crash or a full disk never leaves a broken
   // file that the "already stored" check above would serve forever.

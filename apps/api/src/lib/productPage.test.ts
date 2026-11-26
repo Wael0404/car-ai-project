@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanReference, isAllowedShopUrl, pageContradicts, parseProductPage } from "./productPage.js";
+import { cleanReference, hasReference, isAllowedShopUrl, pageContradicts, parseProductPage, parseSearchResults } from "./productPage.js";
 
 const DOMAINS = ["karhabtk.tn", "bestoil.tn", "vidange.tn"];
 
@@ -112,6 +112,62 @@ describe("parseProductPage", () => {
       parseProductPage(html, "https://x.tn/p.html", "Filtre");
       expect(performance.now() - t0).toBeLessThan(500);
     }
+  });
+});
+
+describe("hasReference", () => {
+  it("matches the exact part number as whole words", () => {
+    expect(hasReference("MISFAT P696 Filtre à air", "P696")).toBe(true);
+    expect(hasReference("https://www.bestoil.tn/filtres/81062-p696-filtre-a-air.html", "P696")).toBe(true);
+    expect(hasReference("ASHIKA 20 01 135 filtre", "20-01-135")).toBe(true);
+    expect(hasReference("Filtre MANN C 2295/3", "C 2295/3")).toBe(true);
+  });
+  it("rejects look-alikes and other variants", () => {
+    expect(hasReference("P696A - Filtre à air", "P696")).toBe(false);
+    expect(hasReference("/81062-p696a-filtre-a-air.html", "P696")).toBe(false);
+    expect(hasReference("R362- Filtre à air MISFAT", "P362")).toBe(false);
+    expect(hasReference("Z4380 filtre", "Z438")).toBe(false);
+    expect(hasReference("anything", "ab")).toBe(false);
+  });
+});
+
+describe("parseSearchResults", () => {
+  const card = (id: string, slug: string, title: string, img = `https://www.bestoil.tn/${id}-home_default/${slug}.jpg`) => `
+    <article class="product-miniature js-product-miniature" data-id-product="${id}">
+      <div class="product-image">
+        <a href="https://www.bestoil.tn/filtres/${id}-${slug}.html" class="thumbnail product-thumbnail">
+          <img class="lazy img-fluid" data-src = "${img}" alt = "${title}" data-full-size-image-url = "${img.replace("home_default", "large_default")}" >
+        </a>
+      </div>
+    </article>`;
+  const html = `<style>.product-miniature{}</style>${card("84958", "r362-filtre-a-air-misfat", "R362- Filtre à air MISFAT")}${card("90001", "p362-filtre-a-air-misfat", "P362 Filtre à air MISFAT")}`;
+
+  it("reads title, product link and large photo of each result", () => {
+    const hits = parseSearchResults(html, "https://www.bestoil.tn/recherche?s=P362");
+    expect(hits).toHaveLength(2);
+    expect(hits[1]).toEqual({
+      title: "P362 Filtre à air MISFAT",
+      productUrl: "https://www.bestoil.tn/filtres/90001-p362-filtre-a-air-misfat.html",
+      imageUrl: "https://www.bestoil.tn/90001-large_default/p362-filtre-a-air-misfat.jpg",
+    });
+  });
+
+  it("finds the exact reference, never a look-alike (P362 is not R362)", () => {
+    const hits = parseSearchResults(html, "https://www.bestoil.tn/recherche?s=P362");
+    const want = "p362";
+    const hit = hits.find((h) => `${h.title} ${h.productUrl}`.toLowerCase().replace(/[^a-z0-9]/g, "").includes(want));
+    expect(hit?.title).toBe("P362 Filtre à air MISFAT");
+  });
+
+  it("skips results without photo or with a category image", () => {
+    const noPhoto = card("1", "x", "Filtre", "https://vidange.tn/img/c/387.jpg");
+    expect(parseSearchResults(noPhoto, "https://vidange.tn/recherche")).toEqual([]);
+  });
+
+  it("stays fast on hostile HTML", () => {
+    const t0 = performance.now();
+    parseSearchResults('<article class="product-miniature <a class="product-thumbnail" '.repeat(20_000), "https://x.tn/");
+    expect(performance.now() - t0).toBeLessThan(1000);
   });
 });
 
