@@ -177,6 +177,34 @@ export interface VehicleEvent {
   date: string;
 }
 
+/** "Carnet de vidange": every oil change and what is left before the next one. */
+export interface OilLog {
+  status: "READY" | "PENDING" | "FAILED";
+  item: { id: string; name: string; intervalKm: number | null; intervalMonths: number | null } | null;
+  mileageKm: number | null;
+  next: {
+    status: "overdue" | "soon" | "ok";
+    nextDueKm: number | null;
+    nextDueDate: string | null;
+    kmLeft: number | null;
+    daysLeft: number | null;
+    /** Share of the oil's life already used (0..1+). */
+    used: number | null;
+    /** No oil change recorded yet: the due point is an estimate. */
+    estimated: boolean;
+  } | null;
+  entries: Array<{
+    recordId: string;
+    date: string;
+    km: number;
+    costTnd: number | null;
+    note: string | null;
+    alsoDone: string[];
+    kmSincePrevious: number | null;
+    monthsSincePrevious: number | null;
+  }>;
+}
+
 export interface Report {
   totals: { spentTnd: number; servicesDone: number; avgKmPerMonth: number | null; lastMileageKm: number | null };
   mileage: Array<{ date: string; km: number }>;

@@ -6,7 +6,8 @@ import { brandFromTitle, guessPart } from "../lib/parts.js";
 import { enqueueVinResearch } from "../lib/queue.js";
 import { normalizeCode } from "../lib/specReuse.js";
 import { buildReport, logEvent } from "../lib/history.js";
-import { computeDue, parseRegistrationDate, type PlanItem } from "../lib/maintenance.js";
+import { buildOilLog } from "../lib/oilLog.js";
+import { computeDue, parseRegistrationDate, parseServiceDate, type PlanItem } from "../lib/maintenance.js";
 import { maintenanceKey } from "../maintenanceJobs.js";
 import { getOrQueuePrices, type StoredOffer } from "../priceJobs.js";
 import type { VehicleProfile } from "../agent/schema.js";
@@ -46,7 +47,13 @@ const DoneBody = z.object({
   km: z.number().int().min(0).max(2_000_000).optional(),
   costTnd: z.number().min(0).max(1_000_000).optional(),
   note: z.string().trim().max(300).optional(),
+  /** Day the service was done (YYYY-MM-DD), for services entered afterwards. Default: today. */
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
 });
+
 const RecordParams = IdParamsShape().extend({ recordId: z.uuid() });
 
 function IdParamsShape() {
@@ -299,6 +306,38 @@ export async function vehicleRoutes(app: FastifyInstance) {
   });
 
   /**
+   * "Carnet de vidange": each oil change (date, km, cost, done with it) and
+   * what is left before the next one. No AI call.
+   */
+  app.get("/vehicles/:id/oil-log", async (req, reply) => {
+    const { id } = IdParams.parse(req.params);
+    const vehicle = await prisma.vehicle.findFirst({
+      where: { id, userId: req.user.sub },
+      include: { spec: true, maintenanceRecords: true },
+    });
+    if (!vehicle) return reply.code(404).send({ error: "Véhicule introuvable." });
+    const profile = vehicle.spec.status === "READY" ? (vehicle.spec.data as unknown as VehicleProfile | null) : null;
+    const key = profile ? maintenanceKey(profile) : null;
+    const plan = key ? await prisma.maintenancePlan.findUnique({ where: { key } }) : null;
+    if (!plan || plan.status !== "READY" || !Array.isArray(plan.items)) {
+      return {
+        status: plan?.status === "FAILED" ? "FAILED" : "PENDING",
+        item: null,
+        mileageKm: vehicle.mileageKm,
+        next: null,
+        entries: [],
+      };
+    }
+    const log = buildOilLog(
+      plan.items as unknown as PlanItem[],
+      vehicle.maintenanceRecords,
+      vehicle.mileageKm,
+      parseRegistrationDate(vehicle.firstRegistration),
+    );
+    return { status: "READY", ...log };
+  });
+
+  /**
    * Prices of the parts for one maintenance item on Tunisian shops + labour
    * estimate. Looked up by the AI agent the first time someone opens the
    * item for this car version, then shared for 7 days. Poll while PENDING.
@@ -341,9 +380,13 @@ export async function vehicleRoutes(app: FastifyInstance) {
   /** Marks a maintenance item as done (at the given km, default: current mileage). */
   app.post("/vehicles/:id/maintenance/:itemId/done", async (req, reply) => {
     const { id, itemId } = ItemParams.parse(req.params);
-    const { km, costTnd, note } = DoneBody.parse(req.body ?? {});
+    const { km, costTnd, note, date } = DoneBody.parse(req.body ?? {});
     const vehicle = await prisma.vehicle.findFirst({ where: { id, userId: req.user.sub }, include: { spec: true } });
     if (!vehicle) return reply.code(404).send({ error: "Véhicule introuvable." });
+    const doneAt = date ? parseServiceDate(date) : new Date();
+    if (!doneAt) return reply.code(400).send({ error: "Date invalide : elle ne peut pas être dans le futur." });
+    // A service entered afterwards needs its own km (today's odometer would be wrong).
+    if (date && km === undefined) return reply.code(400).send({ error: "Indiquez le kilométrage de ce jour-là." });
     const doneAtKm = km ?? vehicle.mileageKm;
     if (doneAtKm === null || doneAtKm === undefined) {
       return reply.code(400).send({ error: "Indiquez d'abord le kilométrage de la voiture." });
@@ -361,6 +404,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
         itemName: item?.name ?? null,
         category: item?.category ?? null,
         doneAtKm,
+        doneAt,
         costTnd: costTnd ?? null,
         note: note || null,
       },
@@ -372,6 +416,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
       category: item?.category ?? null,
       km: doneAtKm,
       costTnd: costTnd ?? null,
+      date: date ?? null,
     });
     // Doing a service at a higher km also tells us the current mileage.
     if (vehicle.mileageKm === null || doneAtKm > vehicle.mileageKm) {

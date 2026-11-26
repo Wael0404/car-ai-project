@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api } from "./api";
+import { api, type DoneInput } from "./api";
 import type { Maintenance, OwnerHints, PartPrices, Vehicle } from "./types";
 
 const POLL_MS = 4000;
@@ -78,8 +78,7 @@ export function useMaintenance(id: string, enabled: boolean) {
 export function useMarkMaintenanceDone(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ itemId, km, costTnd }: { itemId: string; km?: number; costTnd?: number }) =>
-      api.markMaintenanceDone(id, itemId, { km, costTnd }),
+    mutationFn: ({ itemId, ...input }: { itemId: string } & DoneInput) => api.markMaintenanceDone(id, itemId, input),
     onSuccess: () => invalidateCar(qc, id),
   });
 }
@@ -120,8 +119,13 @@ function invalidateCar(qc: ReturnType<typeof useQueryClient>, id: string) {
     qc.invalidateQueries({ queryKey: ["maintenance", id] }),
     qc.invalidateQueries({ queryKey: ["history", id] }),
     qc.invalidateQueries({ queryKey: ["report", id] }),
+    qc.invalidateQueries({ queryKey: ["oil-log", id] }),
     qc.invalidateQueries({ queryKey: ["vehicles", id] }),
   ]);
+}
+
+export function useOilLog(id: string) {
+  return useQuery({ queryKey: ["oil-log", id], queryFn: () => api.getOilLog(id) });
 }
 
 export function useHistory(id: string) {

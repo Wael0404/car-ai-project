@@ -129,3 +129,13 @@ export function parseRegistrationDate(value: string | null | undefined): Date | 
   if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
   return null;
 }
+
+/** "2026-03-14" -> that day at noon (local), or null if invalid, in the future or before 1980. */
+export function parseServiceDate(value: string, now: Date = new Date()): Date | null {
+  const [y, m, d] = value.split("-").map(Number) as [number, number, number];
+  const date = new Date(y, m - 1, d, 12);
+  if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return null;
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  if (date > endOfToday || y < 1980) return null;
+  return date;
+}

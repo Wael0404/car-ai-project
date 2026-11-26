@@ -259,7 +259,7 @@ function Dashboard({ id }: { id: string }) {
             <Txt tone="muted">Le plan d'entretien apparaîtra dès que j'aurai identifié votre voiture.</Txt>
           </Card>
         ))}
-      {tab === "historique" && <HistorySection vehicleId={v.id} />}
+      {tab === "historique" && <HistorySection vehicleId={v.id} mileageKm={v.mileageKm} />}
       {tab === "fiche" &&
         (v.status === "READY" && p ? (
           <Specs v={v} />

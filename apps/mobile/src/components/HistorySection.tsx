@@ -1,22 +1,44 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { Alert, Pressable, View } from "react-native";
 import { BarChart, LineChart, RankBars } from "@/components/charts";
 import { CATEGORY_ICON, CATEGORY_LABEL } from "@/components/MaintenanceSection";
+import { OilLogCard } from "@/components/OilLogCard";
 import { RobotGuide } from "@/components/Robot";
 import { Card, SectionTitle, Skeleton, Txt, type IconName } from "@/components/ui";
-import { km, tnd } from "@/lib/format";
+import { dateFr, dateLongFr, km, MONTHS_FR, tnd } from "@/lib/format";
 import { font, radius, space, useTheme, PAINT_COLORS } from "@/lib/theme";
 import type { Report, VehicleEvent } from "@/lib/types";
-import { useHistory, useReport, useUndoMaintenance } from "@/lib/vehicles";
+import { useHistory, useOilLog, useReport, useUndoMaintenance } from "@/lib/vehicles";
 
-const MONTHS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+/**
+ * Everything done on the car, in the order an owner looks for it:
+ * the oil-change logbook, a short summary in plain words, every service,
+ * then spending and mileage (only when there is something to show), and the
+ * detailed log of changes folded at the bottom.
+ */
 
 const two = (n: number) => String(n).padStart(2, "0");
-const dayFr = (d: Date) => `${two(d.getDate())}/${two(d.getMonth() + 1)}/${d.getFullYear()}`;
-const dateTimeFr = (iso: string) => {
+const timeFr = (iso: string) => {
   const d = new Date(iso);
-  return `${dayFr(d)} à ${two(d.getHours())}:${two(d.getMinutes())}`;
+  return `${two(d.getHours())}:${two(d.getMinutes())}`;
+};
+const localDay = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+};
+/** "Aujourd'hui", "Hier" or "12 novembre 2026". */
+function dayLabel(day: string): string {
+  const now = new Date();
+  const today = `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}`;
+  const y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const yesterday = `${y.getFullYear()}-${two(y.getMonth() + 1)}-${two(y.getDate())}`;
+  return day === today ? "Aujourd'hui" : day === yesterday ? "Hier" : dateLongFr(day);
+}
+const monthLabel = (iso: string) => {
+  const d = new Date(iso);
+  const s = `${MONTHS_FR[d.getMonth()]} ${d.getFullYear()}`;
+  return s.charAt(0).toUpperCase() + s.slice(1);
 };
 const shortDay = (ms: number) => {
   const d = new Date(ms);
@@ -26,84 +48,139 @@ const kmTick = (v: number) => (Math.abs(v) >= 10_000 ? `${Math.round(v / 1000)} 
 const dtTick = (v: number) => v.toLocaleString("fr-FR", { maximumFractionDigits: 0 });
 const colorName = (hex: unknown) => PAINT_COLORS.find((c) => c.hex === hex)?.name ?? "personnalisée";
 
-/** Human sentence + icon for each kind of change. */
-function describe(e: VehicleEvent): { icon: IconName; title: string; detail?: string } {
-  const d = (e.data ?? {}) as Record<string, unknown>;
-  const n = (v: unknown) => (typeof v === "number" ? v : null);
-  switch (e.type) {
-    case "vehicle_added":
-      return { icon: "add-circle-outline", title: "Voiture ajoutée", detail: typeof d.vin === "string" ? `VIN ${d.vin}` : undefined };
-    case "analysis_ready":
-      return {
-        icon: "sparkles-outline",
-        title: "Analyse terminée",
-        detail: [d.make, d.model].filter((x) => typeof x === "string").join(" ") || undefined,
-      };
-    case "mileage_updated": {
-      const from = n(d.fromKm);
-      const to = n(d.toKm);
-      return {
-        icon: "speedometer-outline",
-        title: "Kilométrage mis à jour",
-        detail: to === null ? undefined : from === null ? km(to) : `${km(from)} → ${km(to)}`,
-      };
-    }
-    case "maintenance_done": {
-      const cost = n(d.costTnd);
-      const at = n(d.km);
-      return {
-        icon: CATEGORY_ICON[String(d.category)] ?? "checkmark-done-outline",
-        title: `${typeof d.itemName === "string" ? d.itemName : "Entretien"} : fait`,
-        detail: [at !== null ? `à ${km(at)}` : null, cost !== null ? tnd(cost) : null].filter(Boolean).join(" · ") || undefined,
-      };
-    }
-    case "maintenance_undone":
-      return {
-        icon: "arrow-undo-outline",
-        title: "Entretien annulé",
-        detail: typeof d.itemName === "string" ? d.itemName : undefined,
-      };
-    case "color_changed":
-      return { icon: "color-palette-outline", title: "Couleur changée", detail: `${colorName(d.from)} → ${colorName(d.to)}` };
-    case "nickname_changed":
-      return { icon: "pricetag-outline", title: "Surnom changé", detail: typeof d.to === "string" ? d.to : undefined };
-    case "info_corrected":
-      return { icon: "document-text-outline", title: "Infos de la carte grise corrigées", detail: "Nouvelle recherche lancée" };
-    default:
-      return { icon: "ellipse-outline", title: "Modification" };
-  }
-}
+/* ------------------------------ En bref ------------------------------ */
 
-function Tile({ icon, label, value }: { icon: IconName; label: string; value: string }) {
+function SummaryRow({ icon, label, value, first }: { icon: IconName; label: string; value: string; first: boolean }) {
   const t = useTheme();
   return (
-    <Card style={{ flexBasis: "47%", flexGrow: 1, gap: space.sm }}>
-      <View accessible accessibilityLabel={`${label} : ${value}`} style={{ gap: space.sm }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Ionicons name={icon} size={16} color={t.muted} />
-          <Txt variant="caption" tone="muted">
-            {label}
-          </Txt>
-        </View>
-        <Txt variant="title" style={{ fontVariant: ["tabular-nums"] }} numberOfLines={1} adjustsFontSizeToFit>
-          {value}
-        </Txt>
-      </View>
+    <View
+      accessible
+      accessibilityLabel={`${label} : ${value}`}
+      style={{ flexDirection: "row", alignItems: "center", gap: space.md, paddingVertical: space.md, borderTopWidth: first ? 0 : 0.5, borderTopColor: t.border }}
+    >
+      <Ionicons name={icon} size={20} color={t.primary} />
+      <Txt style={{ flex: 1 }}>{label}</Txt>
+      <Txt variant="bodyStrong" style={{ fontVariant: ["tabular-nums"] }}>
+        {value}
+      </Txt>
+    </View>
+  );
+}
+
+/** Plain-word summary; rows with nothing to say are left out. */
+function summaryRows(r: Report, mileageKm: number | null): Array<{ icon: IconName; label: string; value: string }> {
+  const x = r.totals;
+  const rows: Array<{ icon: IconName; label: string; value: string }> = [];
+  if (mileageKm !== null) rows.push({ icon: "speedometer-outline", label: "Compteur actuel", value: km(mileageKm) });
+  if (x.avgKmPerMonth !== null) rows.push({ icon: "trending-up-outline", label: "Vous roulez environ", value: `${km(x.avgKmPerMonth)} / mois` });
+  if (x.servicesDone > 0) rows.push({ icon: "checkmark-done-outline", label: "Entretiens enregistrés (vidanges comprises)", value: String(x.servicesDone) });
+  const oldest = r.records.at(-1);
+  if (x.spentTnd > 0 && oldest) {
+    rows.push({ icon: "wallet-outline", label: `Dépensé depuis le ${dateFr(localDay(oldest.date))}`, value: tnd(x.spentTnd) });
+  }
+  return rows;
+}
+
+function Summary({ rows }: { rows: Array<{ icon: IconName; label: string; value: string }> }) {
+  return (
+    <Card style={{ paddingVertical: space.xs }}>
+      {rows.map((row, i) => (
+        <SummaryRow key={row.label} {...row} first={i === 0} />
+      ))}
     </Card>
   );
 }
 
-function Totals({ r }: { r: Report }) {
-  const x = r.totals;
+/* --------------------------- Tous les entretiens --------------------------- */
+
+function Services({ vehicleId, records }: { vehicleId: string; records: Report["records"] }) {
+  const t = useTheme();
+  const undo = useUndoMaintenance(vehicleId);
+  const [all, setAll] = useState(false);
+  const shown = all ? records : records.slice(0, 8);
+
+  if (records.length === 0) {
+    return (
+      <Card>
+        <Txt tone="muted">
+          Aucun autre entretien enregistré. Quand un entretien est fait (filtres, freins, courroie…), touchez « C'est fait »
+          dans l'onglet Entretien : il apparaîtra ici avec sa date et son kilométrage.
+        </Txt>
+      </Card>
+    );
+  }
+
+  function confirmDelete(id: string, name: string, date: string) {
+    Alert.alert("Supprimer cet entretien ?", `« ${name} » du ${dateFr(localDay(date))} ne sera plus compté comme fait.`, [
+      { text: "Garder", style: "cancel" },
+      {
+        text: "Supprimer",
+        style: "destructive",
+        onPress: () => undo.mutate(id, { onError: (err) => Alert.alert("Suppression impossible", err.message) }),
+      },
+    ]);
+  }
+
+  // Group by month, newest first (records already come newest first).
+  const groups: Array<{ month: string; rows: Report["records"] }> = [];
+  for (const r of shown) {
+    const m = monthLabel(r.date);
+    const g = groups.at(-1);
+    if (g && g.month === m) g.rows.push(r);
+    else groups.push({ month: m, rows: [r] });
+  }
+
   return (
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.md }}>
-      <Tile icon="wallet-outline" label="Dépensé" value={tnd(x.spentTnd)} />
-      <Tile icon="checkmark-done-outline" label="Entretiens faits" value={String(x.servicesDone)} />
-      <Tile icon="trending-up-outline" label="Moyenne par mois" value={x.avgKmPerMonth !== null ? km(x.avgKmPerMonth) : "—"} />
-      <Tile icon="speedometer-outline" label="Dernier relevé" value={x.lastMileageKm !== null ? km(x.lastMileageKm) : "—"} />
-    </View>
+    <Card padded={false} style={{ overflow: "hidden", gap: 0 }}>
+      {groups.map((g) => (
+        <View key={g.month}>
+          <View style={{ backgroundColor: t.surface2, paddingHorizontal: space.lg, paddingVertical: 6 }}>
+            <Txt variant="label" tone="muted">
+              {g.month}
+            </Txt>
+          </View>
+          {g.rows.map((r, i) => {
+            const name = r.itemName ?? "Entretien";
+            const detail = [dateLongFr(localDay(r.date)), `à ${km(r.km)}`, r.costTnd !== null ? tnd(r.costTnd) : null].filter(Boolean).join(" · ");
+            return (
+              <View
+                key={r.id}
+                style={{ flexDirection: "row", alignItems: "center", gap: space.md, paddingLeft: space.lg, paddingVertical: space.sm, borderTopWidth: i === 0 ? 0 : 0.5, borderTopColor: t.border }}
+              >
+                <View style={{ width: 36, height: 36, borderRadius: radius.sm, backgroundColor: t.successSoft, alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name={CATEGORY_ICON[r.category ?? ""] ?? "checkmark-done-outline"} size={18} color={t.success} />
+                </View>
+                <View style={{ flex: 1, gap: 2 }} accessible accessibilityLabel={`${name}, ${detail}`}>
+                  <Txt variant="bodyStrong">{name}</Txt>
+                  <Txt variant="caption" tone="muted">
+                    {detail}
+                  </Txt>
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Supprimer : ${name}`}
+                  onPress={() => confirmDelete(r.id, name, r.date)}
+                  style={{ minWidth: 48, minHeight: 48, alignItems: "center", justifyContent: "center" }}
+                >
+                  <Ionicons name="trash-outline" size={18} color={t.muted} />
+                </Pressable>
+              </View>
+            );
+          })}
+        </View>
+      ))}
+      {records.length > 8 ? (
+        <Pressable accessibilityRole="button" onPress={() => setAll(!all)} style={{ padding: space.lg, alignItems: "center", borderTopWidth: 0.5, borderTopColor: t.border }}>
+          <Txt variant="caption" tone="primary" style={{ fontFamily: font.semibold }}>
+            {all ? "Afficher moins" : `Voir les ${records.length} entretiens`}
+          </Txt>
+        </Pressable>
+      ) : null}
+    </Card>
   );
 }
+
+/* --------------------------- Dépenses, kilométrage --------------------------- */
 
 /** Figures behind a chart, for screen readers and anyone who prefers a list. */
 function DataList({ rows }: { rows: Array<{ key: string; label: string; value: string }> }) {
@@ -128,236 +205,262 @@ function DataList({ rows }: { rows: Array<{ key: string; label: string; value: s
   );
 }
 
-function ChartCard({
-  title,
-  subtitle,
-  children,
-  rows,
-}: {
-  title: string;
-  subtitle: string;
-  children: ReactNode;
-  rows: Array<{ key: string; label: string; value: string }>;
-}) {
-  const [showList, setShowList] = useState(false);
+function ListToggle({ list, onToggle }: { list: boolean; onToggle: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" hitSlop={10} onPress={onToggle} style={{ minHeight: 32, justifyContent: "center" }}>
+      <Txt variant="caption" tone="primary" style={{ fontFamily: font.semibold }}>
+        {list ? "Voir le graphique" : "Voir en liste"}
+      </Txt>
+    </Pressable>
+  );
+}
+
+function Spending({ r }: { r: Report }) {
+  const [list, setList] = useState(false);
+  const bars = r.spendByMonth.map((m) => {
+    const [y, mo] = m.month.split("-").map(Number);
+    const name = MONTHS_FR[(mo ?? 1) - 1]!;
+    return { key: m.month, label: name.charAt(0).toUpperCase(), longLabel: `${name} ${y}`, value: m.totalTnd };
+  });
+  const yearTotal = r.spendByMonth.reduce((s, m) => s + m.totalTnd, 0);
   return (
     <Card style={{ gap: space.md }}>
       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space.md }}>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, gap: 2 }}>
           <Txt variant="bodyStrong" accessibilityRole="header">
-            {title}
+            {tnd(yearTotal)} sur les 12 derniers mois
           </Txt>
           <Txt variant="caption" tone="muted">
-            {subtitle}
+            Selon les prix indiqués. Touchez un mois pour voir le montant.
           </Txt>
         </View>
-        <Pressable accessibilityRole="button" hitSlop={10} onPress={() => setShowList(!showList)} style={{ minHeight: 32, justifyContent: "center" }}>
-          <Txt variant="caption" tone="primary" style={{ fontFamily: font.semibold }}>
-            {showList ? "Graphique" : "Chiffres"}
-          </Txt>
-        </Pressable>
+        <ListToggle list={list} onToggle={() => setList(!list)} />
       </View>
-      {showList ? <DataList rows={rows} /> : children}
-    </Card>
-  );
-}
-
-function Charts({ r }: { r: Report }) {
-  const mileagePts = r.mileage.map((p) => ({ x: new Date(p.date).getTime(), y: p.km }));
-  const hasSpend = r.spendByMonth.some((m) => m.totalTnd > 0);
-  const bars = r.spendByMonth.map((m) => {
-    const [y, mo] = m.month.split("-").map(Number);
-    const name = MONTHS[(mo ?? 1) - 1]!;
-    return { key: m.month, label: name.charAt(0).toUpperCase(), longLabel: `${name} ${y}`, value: m.totalTnd };
-  });
-
-  return (
-    <View style={{ gap: space.lg }}>
-      {mileagePts.length >= 2 ? (
-        <ChartCard
-          title="Kilométrage"
-          subtitle="Chaque relevé du compteur. Touchez un point pour voir la valeur."
-          rows={[...r.mileage].reverse().map((p) => ({ key: p.date, label: dayFr(new Date(p.date)), value: km(p.km) }))}
-        >
-          <LineChart
-            points={mileagePts}
-            formatY={km}
-            formatTick={kmTick}
-            formatX={shortDay}
-            accessibilityLabel={`Courbe du kilométrage : de ${km(mileagePts[0]!.y)} à ${km(mileagePts.at(-1)!.y)}`}
-          />
-        </ChartCard>
+      {list ? (
+        <DataList rows={[...bars].reverse().filter((b) => b.value > 0).map((b) => ({ key: b.key, label: b.longLabel, value: tnd(b.value) }))} />
       ) : (
-        <RobotGuide mood="happy" compact>
-          Mettez à jour le kilométrage de temps en temps : je dessinerai ici son évolution et votre moyenne par mois.
-        </RobotGuide>
+        <BarChart bars={bars} formatValue={tnd} formatTick={dtTick} accessibilityLabel={`Dépenses par mois sur 12 mois, total ${tnd(yearTotal)}`} />
       )}
-
-      {hasSpend ? (
-        <ChartCard
-          title="Dépenses d'entretien"
-          subtitle="Les 12 derniers mois, en dinars. Touchez un mois pour voir le montant."
-          rows={[...bars].reverse().filter((b) => b.value > 0).map((b) => ({ key: b.key, label: b.longLabel, value: tnd(b.value) }))}
-        >
-          <BarChart
-            bars={bars}
-            formatValue={tnd}
-            formatTick={dtTick}
-            accessibilityLabel={`Dépenses par mois sur 12 mois, total ${tnd(r.totals.spentTnd)}`}
-          />
-        </ChartCard>
-      ) : (
-        <RobotGuide mood="happy" compact>
-          Quand vous touchez « C'est fait », indiquez le prix payé : je vous montrerai vos dépenses mois par mois.
-        </RobotGuide>
-      )}
-
-      {r.spendByCategory.length > 0 && (
-        <Card style={{ gap: space.md }}>
-          <View>
-            <Txt variant="bodyStrong" accessibilityRole="header">
-              Par type d'entretien
-            </Txt>
-            <Txt variant="caption" tone="muted">
-              Montant total et nombre d'interventions
-            </Txt>
-          </View>
+      {r.spendByCategory.some((c) => c.totalTnd > 0) ? (
+        <View style={{ gap: space.md, marginTop: space.sm }}>
+          <Txt variant="label" tone="muted">
+            Par type d'entretien
+          </Txt>
           <RankBars
             formatValue={tnd}
-            rows={r.spendByCategory.map((c) => ({
-              key: c.category,
-              label: CATEGORY_LABEL[c.category] ?? c.category,
-              value: c.totalTnd,
-              sub: `${c.count} fois`,
-            }))}
+            rows={r.spendByCategory
+              .filter((c) => c.totalTnd > 0)
+              .map((c) => ({ key: c.category, label: CATEGORY_LABEL[c.category] ?? c.category, value: c.totalTnd, sub: `${c.count} fois` }))}
           />
-        </Card>
-      )}
-    </View>
-  );
-}
-
-function Timeline({ vehicleId, events, undoable }: { vehicleId: string; events: VehicleEvent[]; undoable: Set<string> }) {
-  const t = useTheme();
-  const undo = useUndoMaintenance(vehicleId);
-  const [all, setAll] = useState(false);
-  const shown = all ? events : events.slice(0, 15);
-
-  function confirmUndo(recordId: string, name: string) {
-    Alert.alert("Annuler cet entretien ?", `« ${name} » ne sera plus compté comme fait. L'annulation reste visible dans l'historique.`, [
-      { text: "Garder", style: "cancel" },
-      {
-        text: "Annuler l'entretien",
-        style: "destructive",
-        onPress: () =>
-          undo.mutate(recordId, {
-            onError: (err) => Alert.alert("Impossible d'annuler", err.message),
-          }),
-      },
-    ]);
-  }
-
-  return (
-    <Card padded={false} style={{ overflow: "hidden" }}>
-      {shown.map((e, i) => {
-        const { icon, title, detail } = describe(e);
-        const recordId = e.type === "maintenance_done" ? (e.data as { recordId?: string } | null)?.recordId : undefined;
-        const canUndo = recordId !== undefined && undoable.has(recordId);
-        return (
-          <View
-            key={e.id}
-            style={{ flexDirection: "row", gap: space.md, padding: space.lg, borderTopWidth: i === 0 ? 0 : 0.5, borderTopColor: t.border }}
-          >
-            <View style={{ width: 36, height: 36, borderRadius: radius.sm, backgroundColor: t.surface2, alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name={icon} size={18} color={t.text} />
-            </View>
-            <View style={{ flex: 1, gap: 2 }} accessible accessibilityLabel={`${title}. ${detail ?? ""}. ${dateTimeFr(e.date)}`}>
-              <Txt variant="bodyStrong">{title}</Txt>
-              {detail ? <Txt variant="caption">{detail}</Txt> : null}
-              <Txt variant="micro" tone="muted">
-                {dateTimeFr(e.date)}
-              </Txt>
-            </View>
-            {canUndo ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Annuler : ${title}`}
-                hitSlop={8}
-                disabled={undo.isPending}
-                onPress={() => confirmUndo(recordId, title.replace(/ : fait$/, ""))}
-                style={{ alignSelf: "center", minHeight: 44, justifyContent: "center", paddingHorizontal: space.sm }}
-              >
-                <Txt variant="caption" tone="primary" style={{ fontFamily: font.semibold }}>
-                  Annuler
-                </Txt>
-              </Pressable>
-            ) : null}
-          </View>
-        );
-      })}
-      {events.length > 15 ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setAll(!all)}
-          style={{ padding: space.lg, alignItems: "center", borderTopWidth: 0.5, borderTopColor: t.border }}
-        >
-          <Txt variant="caption" tone="primary" style={{ fontFamily: font.semibold }}>
-            {all ? "Afficher moins" : `Tout afficher (${events.length})`}
-          </Txt>
-        </Pressable>
+        </View>
       ) : null}
     </Card>
   );
 }
 
-export function HistorySection({ vehicleId }: { vehicleId: string }) {
+function Mileage({ r }: { r: Report }) {
+  const [list, setList] = useState(false);
+  const pts = r.mileage.map((p) => ({ x: new Date(p.date).getTime(), y: p.km }));
+  return (
+    <Card style={{ gap: space.md }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: space.md }}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Txt variant="bodyStrong" accessibilityRole="header">
+            Évolution du compteur
+          </Txt>
+          <Txt variant="caption" tone="muted">
+            Chaque relevé que vous avez indiqué. Touchez un point pour voir la valeur.
+          </Txt>
+        </View>
+        <ListToggle list={list} onToggle={() => setList(!list)} />
+      </View>
+      {list ? (
+        <DataList rows={[...r.mileage].reverse().map((p) => ({ key: p.date, label: dateFr(localDay(p.date)), value: km(p.km) }))} />
+      ) : (
+        <LineChart
+          points={pts}
+          formatY={km}
+          formatTick={kmTick}
+          formatX={shortDay}
+          accessibilityLabel={`Compteur : de ${km(pts[0]!.y)} à ${km(pts.at(-1)!.y)}`}
+        />
+      )}
+    </Card>
+  );
+}
+
+/* --------------------------- Journal des modifications --------------------------- */
+
+/** Plain sentence + icon for each change. */
+function describe(e: VehicleEvent): { icon: IconName; title: string; detail?: string } {
+  const d = (e.data ?? {}) as Record<string, unknown>;
+  const n = (v: unknown) => (typeof v === "number" ? v : null);
+  const s = (v: unknown) => (typeof v === "string" && v ? v : null);
+  switch (e.type) {
+    case "vehicle_added":
+      return { icon: "add-circle-outline", title: "Voiture ajoutée à votre compte", detail: s(d.vin) ? `VIN ${d.vin}` : undefined };
+    case "analysis_ready":
+      return { icon: "sparkles-outline", title: "Robi a identifié votre voiture", detail: [s(d.make), s(d.model)].filter(Boolean).join(" ") || undefined };
+    case "mileage_updated": {
+      const from = n(d.fromKm);
+      const to = n(d.toKm);
+      return { icon: "speedometer-outline", title: "Compteur mis à jour", detail: to === null ? undefined : from === null ? km(to) : `${km(to)} (avant : ${km(from)})` };
+    }
+    case "maintenance_done": {
+      const parts = [n(d.km) !== null ? `à ${km(n(d.km)!)}` : null, n(d.costTnd) !== null ? tnd(n(d.costTnd)!) : null, s(d.date) ? `fait le ${dateFr(s(d.date)!)}` : null];
+      return {
+        icon: CATEGORY_ICON[String(d.category)] ?? "checkmark-done-outline",
+        title: `${s(d.itemName) ?? "Entretien"} : fait`,
+        detail: parts.filter(Boolean).join(" · ") || undefined,
+      };
+    }
+    case "maintenance_undone":
+      return { icon: "trash-outline", title: "Entretien supprimé", detail: s(d.itemName) ?? undefined };
+    case "color_changed":
+      return { icon: "color-palette-outline", title: "Couleur changée", detail: `${colorName(d.from)} → ${colorName(d.to)}` };
+    case "nickname_changed":
+      return { icon: "pricetag-outline", title: "Surnom changé", detail: s(d.to) ?? undefined };
+    case "info_corrected":
+      return { icon: "document-text-outline", title: "Infos de la carte grise corrigées", detail: "Robi a relancé l'analyse" };
+    default:
+      return { icon: "ellipse-outline", title: "Modification" };
+  }
+}
+
+function ChangeLog({ events }: { events: VehicleEvent[] }) {
+  const t = useTheme();
+  const [open, setOpen] = useState(false);
+  const days: Array<{ day: string; events: VehicleEvent[] }> = [];
+  for (const e of events) {
+    const day = localDay(e.date);
+    const g = days.at(-1);
+    if (g && g.day === day) g.events.push(e);
+    else days.push({ day, events: [e] });
+  }
+  return (
+    <Card padded={false} style={{ overflow: "hidden", gap: 0 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen(!open)}
+        style={{ flexDirection: "row", alignItems: "center", gap: space.md, padding: space.lg, minHeight: 56 }}
+      >
+        <Ionicons name="list-outline" size={20} color={t.muted} />
+        <View style={{ flex: 1 }}>
+          <Txt variant="bodyStrong">Journal des modifications</Txt>
+          <Txt variant="caption" tone="muted">
+            Tout ce qui a changé sur la voiture, jour par jour ({events.length})
+          </Txt>
+        </View>
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={20} color={t.muted} />
+      </Pressable>
+      {open
+        ? days.map((g) => (
+            <View key={g.day}>
+              <View style={{ backgroundColor: t.surface2, paddingHorizontal: space.lg, paddingVertical: 6 }}>
+                <Txt variant="label" tone="muted">
+                  {dayLabel(g.day)}
+                </Txt>
+              </View>
+              {g.events.map((e, i) => {
+                const { icon, title, detail } = describe(e);
+                return (
+                  <View
+                    key={e.id}
+                    accessible
+                    accessibilityLabel={`${title}. ${detail ?? ""}. ${timeFr(e.date)}`}
+                    style={{ flexDirection: "row", gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.md, borderTopWidth: i === 0 ? 0 : 0.5, borderTopColor: t.border }}
+                  >
+                    <Ionicons name={icon} size={18} color={t.text} style={{ marginTop: 2 }} />
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Txt>{title}</Txt>
+                      {detail ? (
+                        <Txt variant="caption" tone="muted">
+                          {detail}
+                        </Txt>
+                      ) : null}
+                    </View>
+                    <Txt variant="micro" tone="muted" style={{ fontVariant: ["tabular-nums"] }}>
+                      {timeFr(e.date)}
+                    </Txt>
+                  </View>
+                );
+              })}
+            </View>
+          ))
+        : null}
+    </Card>
+  );
+}
+
+/* ------------------------------ Screen ------------------------------ */
+
+export function HistorySection({ vehicleId, mileageKm }: { vehicleId: string; mileageKm: number | null }) {
   const report = useReport(vehicleId);
   const history = useHistory(vehicleId);
+  // Oil changes are in the carnet: not listed a second time below.
+  const oilItemId = useOilLog(vehicleId).data?.item?.id;
 
-  if (report.isLoading || history.isLoading) {
-    return (
-      <View style={{ gap: space.md }}>
-        <Skeleton height={90} />
-        <Skeleton height={220} />
-        <Skeleton height={160} />
-      </View>
-    );
-  }
-  if (!report.data || !history.data) {
-    return (
-      <RobotGuide
-        mood="alert"
-        title="Connexion impossible"
-        action={{
-          label: "Réessayer",
-          onPress: () => {
-            void report.refetch();
-            void history.refetch();
-          },
-        }}
-      >
-        Je n'arrive pas à charger l'historique. Vérifiez votre connexion internet.
-      </RobotGuide>
-    );
-  }
-
-  const undoable = new Set(report.data.records.map((r) => r.id));
   return (
     <View style={{ gap: space.lg }}>
-      <Totals r={report.data} />
-      <SectionTitle>Rapports</SectionTitle>
-      <Charts r={report.data} />
-      <SectionTitle>Historique des modifications</SectionTitle>
-      {history.data.events.length === 0 ? (
-        <Card>
-          <Txt tone="muted">Aucune modification pour l'instant.</Txt>
-        </Card>
+      <RobotGuide mood="happy" compact>
+        Ici, tout ce qui a été fait sur votre voiture : vidanges, entretiens et dépenses.
+      </RobotGuide>
+
+      <OilLogCard vehicleId={vehicleId} mileageKm={mileageKm} />
+
+      {report.isLoading || history.isLoading ? (
+        <View style={{ gap: space.md }}>
+          <Skeleton height={120} />
+          <Skeleton height={160} />
+        </View>
+      ) : !report.data || !history.data ? (
+        <RobotGuide
+          mood="alert"
+          title="Connexion impossible"
+          action={{
+            label: "Réessayer",
+            onPress: () => {
+              void report.refetch();
+              void history.refetch();
+            },
+          }}
+        >
+          Je n'arrive pas à charger l'historique. Vérifiez votre connexion internet.
+        </RobotGuide>
       ) : (
-        <Timeline vehicleId={vehicleId} events={history.data.events} undoable={undoable} />
+        <>
+          {summaryRows(report.data, mileageKm).length > 0 ? (
+            <>
+              <SectionTitle>En bref</SectionTitle>
+              <Summary rows={summaryRows(report.data, mileageKm)} />
+            </>
+          ) : null}
+
+          <SectionTitle>Autres entretiens</SectionTitle>
+          <Services vehicleId={vehicleId} records={report.data.records.filter((r) => r.itemId !== oilItemId)} />
+
+          {report.data.spendByMonth.some((m) => m.totalTnd > 0) ? (
+            <>
+              <SectionTitle>Dépenses</SectionTitle>
+              <Spending r={report.data} />
+            </>
+          ) : null}
+
+          {report.data.mileage.length >= 2 ? (
+            <>
+              <SectionTitle>Kilométrage</SectionTitle>
+              <Mileage r={report.data} />
+            </>
+          ) : null}
+
+          {history.data.events.length > 0 ? <ChangeLog events={history.data.events} /> : null}
+
+          <Txt variant="micro" tone="muted">
+            Chaque changement est enregistré dans votre compte, en sécurité.
+          </Txt>
+        </>
       )}
-      <Txt variant="micro" tone="muted">
-        Chaque changement (kilométrage, entretien, couleur, infos) est enregistré dans votre compte, en sécurité.
-      </Txt>
     </View>
   );
 }

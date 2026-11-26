@@ -1,43 +1,64 @@
 import * as Haptics from "expo-haptics";
 import { useState } from "react";
-import { KeyboardAvoidingView, Modal, Platform, Pressable, View } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Button, Field, Txt } from "@/components/ui";
-import { radius, space, useTheme } from "@/lib/theme";
+import { Button, Field, Segmented, Txt } from "@/components/ui";
+import { checkDayFr, maskDayFr } from "@/lib/format";
+import { font, radius, space, useTheme } from "@/lib/theme";
 import { useMarkMaintenanceDone } from "@/lib/vehicles";
 
 /**
- * Bottom sheet shown by "C'est fait": asks at which km the job was done
- * (defaults to the current odometer) and, optionally, what it cost.
- * The cost feeds the spending charts of the History tab.
+ * Bottom sheet to record a service: today (default) or an earlier day taken
+ * from the paper logbook or an invoice, the km, the price and a free note.
+ * It feeds the "carnet de vidange", the history and the spending charts.
  */
 export function DoneSheet({
   vehicleId,
   itemId,
   itemName,
   currentKm,
+  intro,
+  initialWhen = "today",
   onClose,
 }: {
   vehicleId: string;
   itemId: string;
   itemName: string;
   currentKm: number | null;
+  /** One line under the title (default: about the history). */
+  intro?: string;
+  /** "other" to enter a service from the paper logbook or an invoice. */
+  initialWhen?: "today" | "other";
   onClose: () => void;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const done = useMarkMaintenanceDone(vehicleId);
-  const [kmInput, setKmInput] = useState(currentKm !== null ? String(currentKm) : "");
+  const [when, setWhen] = useState<"today" | "other">(initialWhen);
+  const [dayInput, setDayInput] = useState("");
+  const [kmInput, setKmInput] = useState(initialWhen === "today" && currentKm !== null ? String(currentKm) : "");
   const [costInput, setCostInput] = useState("");
+  const [note, setNote] = useState("");
 
+  const checked = when === "other" && dayInput.length === 10 ? checkDayFr(dayInput) : null;
+  const day = checked && "day" in checked ? checked.day : null;
+  const dayError = checked && "error" in checked ? checked.error : null;
   const kmValue = Number(kmInput);
   const kmValid = kmInput.length > 0 && Number.isFinite(kmValue);
   const cost = costInput.trim() === "" ? undefined : Number(costInput.replace(",", "."));
   const costValid = cost === undefined || (Number.isFinite(cost) && cost >= 0 && cost < 1_000_000);
+  const ready = kmValid && costValid && (when === "today" || day !== null);
+
+  function chooseWhen(v: "today" | "other") {
+    setWhen(v);
+    // Today's odometer is wrong for an older service: ask for that day's km.
+    if (v === "other" && kmInput === String(currentKm ?? "")) setKmInput("");
+    if (v === "today" && kmInput === "" && currentKm !== null) setKmInput(String(currentKm));
+  }
 
   function save() {
     done.mutate(
-      { itemId, km: kmValue, costTnd: cost },
+      { itemId, km: kmValue, costTnd: cost, date: day ?? undefined, note: note.trim() || undefined },
       {
         onSuccess: () => {
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -58,49 +79,85 @@ export function DoneSheet({
         />
         <View
           accessibilityViewIsModal
-          style={{
-            backgroundColor: t.card,
-            borderTopLeftRadius: radius.lg,
-            borderTopRightRadius: radius.lg,
-            padding: space.lg,
-            paddingBottom: space.lg + insets.bottom,
-            gap: space.lg,
-          }}
+          style={{ maxHeight: "94%", backgroundColor: t.card, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg }}
         >
-          <View style={{ alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: t.border }} />
-          <View style={{ gap: 4 }}>
-            <Txt variant="heading" accessibilityRole="header">
-              {itemName}
-            </Txt>
-            <Txt tone="muted">C'est noté dans l'historique de la voiture. Vous pourrez annuler si besoin.</Txt>
-          </View>
-          <Field
-            label="Fait à quel kilométrage ?"
-            icon="speedometer-outline"
-            value={kmInput}
-            onChangeText={(v) => setKmInput(v.replace(/\D/g, "").slice(0, 7))}
-            keyboardType="number-pad"
-            placeholder="Ex. 85000"
-            accessibilityHint="Kilométrage du compteur le jour de l'entretien"
-          />
-          <Field
-            label="Combien ça a coûté ? (facultatif)"
-            icon="cash-outline"
-            value={costInput}
-            onChangeText={(v) => setCostInput(v.replace(/[^\d.,]/g, "").slice(0, 9))}
-            keyboardType="decimal-pad"
-            placeholder="Ex. 120"
-            helper="En dinars (DT), pièces et main-d'œuvre. Sert à suivre vos dépenses."
-            error={costValid ? null : "Montant invalide"}
-            accessibilityHint="Montant total en dinars, laissez vide si vous ne savez pas"
-          />
-          {done.error ? (
-            <Txt tone="danger" accessibilityLiveRegion="polite">
-              {done.error.message}
-            </Txt>
-          ) : null}
-          <Button label="Enregistrer" icon="checkmark-done-outline" loading={done.isPending} disabled={!kmValid || !costValid} onPress={save} />
-          <Button label="Annuler" variant="ghost" size="md" onPress={onClose} />
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ padding: space.lg, paddingBottom: space.lg + insets.bottom, gap: space.lg }}
+          >
+            <View style={{ alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: t.border }} />
+            <View style={{ gap: 4 }}>
+              <Txt variant="heading" accessibilityRole="header">
+                {itemName}
+              </Txt>
+              <Txt tone="muted">{intro ?? "C'est noté dans l'historique de la voiture. Vous pourrez le supprimer si besoin."}</Txt>
+            </View>
+
+            <View style={{ gap: space.sm }}>
+              <Txt variant="caption" style={{ fontFamily: font.semibold }}>
+                Quand ?
+              </Txt>
+              <Segmented<"today" | "other">
+                value={when}
+                onChange={chooseWhen}
+                options={[
+                  { value: "today", label: "Aujourd'hui" },
+                  { value: "other", label: "Une date passée" },
+                ]}
+              />
+            </View>
+            {when === "other" ? (
+              <Field
+                label="Date"
+                icon="calendar-outline"
+                value={dayInput}
+                onChangeText={(v) => setDayInput(maskDayFr(v))}
+                keyboardType="number-pad"
+                placeholder="JJ/MM/AAAA"
+                maxLength={10}
+                error={dayError}
+                helper="Celle du carnet d'entretien ou de la facture."
+                accessibilityHint="Jour, mois et année, par exemple 14/03/2026"
+              />
+            ) : null}
+
+            <Field
+              label={when === "today" ? "Kilométrage aujourd'hui" : "Kilométrage ce jour-là"}
+              icon="speedometer-outline"
+              value={kmInput}
+              onChangeText={(v) => setKmInput(v.replace(/\D/g, "").slice(0, 7))}
+              keyboardType="number-pad"
+              placeholder="Ex. 85000"
+              accessibilityHint="Kilométrage du compteur le jour de l'entretien"
+            />
+            <Field
+              label="Prix payé (facultatif)"
+              icon="cash-outline"
+              value={costInput}
+              onChangeText={(v) => setCostInput(v.replace(/[^\d.,]/g, "").slice(0, 9))}
+              keyboardType="decimal-pad"
+              placeholder="Ex. 120"
+              helper="En dinars (DT), pièces et main-d'œuvre. Sert à suivre vos dépenses."
+              error={costValid ? null : "Montant invalide"}
+              accessibilityHint="Montant total en dinars, laissez vide si vous ne savez pas"
+            />
+            <Field
+              label="Note (facultatif)"
+              icon="create-outline"
+              value={note}
+              onChangeText={(v) => setNote(v.slice(0, 300))}
+              placeholder="Ex. huile Total 5W-30, garage Ben Salah"
+              accessibilityHint="Huile utilisée, garage, remarque"
+            />
+
+            {done.error ? (
+              <Txt tone="danger" accessibilityLiveRegion="polite">
+                {done.error.message}
+              </Txt>
+            ) : null}
+            <Button label="Enregistrer" icon="checkmark-done-outline" loading={done.isPending} disabled={!ready} onPress={save} />
+            <Button label="Annuler" variant="ghost" size="md" onPress={onClose} />
+          </ScrollView>
         </View>
       </KeyboardAvoidingView>
     </Modal>

@@ -1,5 +1,14 @@
 import * as SecureStore from "expo-secure-store";
-import type { Garage, Maintenance, OwnerHints, PartPrices, Report, Tokens, Vehicle, VehicleEvent } from "./types";
+import type { Garage, Maintenance, OilLog, OwnerHints, PartPrices, Report, Tokens, Vehicle, VehicleEvent } from "./types";
+
+/** A service marked done: km and day it was done (default: now), price, note. */
+export interface DoneInput {
+  km?: number;
+  costTnd?: number;
+  /** YYYY-MM-DD, for a service entered afterwards (from the paper logbook...). */
+  date?: string;
+  note?: string;
+}
 
 /** Set EXPO_PUBLIC_API_URL in apps/mobile/.env (use your PC's LAN IP on a real phone). */
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3100/v1";
@@ -119,7 +128,8 @@ export const api = {
     request<PartPrices>(`/vehicles/${id}/maintenance/${encodeURIComponent(itemId)}/prices`),
   getGarages: (lat: number, lon: number) =>
     request<{ garages: Garage[] }>(`/garages?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`),
-  markMaintenanceDone: (id: string, itemId: string, input: { km?: number; costTnd?: number }) =>
+  getOilLog: (id: string) => request<OilLog>(`/vehicles/${id}/oil-log`),
+  markMaintenanceDone: (id: string, itemId: string, input: DoneInput) =>
     request<{ ok: true; recordId: string }>(`/vehicles/${id}/maintenance/${encodeURIComponent(itemId)}/done`, {
       method: "POST",
       body: JSON.stringify(input),
