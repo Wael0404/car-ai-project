@@ -59,6 +59,15 @@ export function OwnerHintsFields({ value, onChange }: { value: OwnerHints; onCha
         maxLength={80}
         accessibilityHint="Code du type constructeur, sur la carte grise"
       />
+      <SelectField
+        label="Énergie (P.3)"
+        icon="water-outline"
+        value={value.fuel ?? ""}
+        options={["Essence", "Diesel", "Hybride", "Électrique", "GPL"]}
+        placeholder="Essence ou diesel ?"
+        helper="Sur la carte grise : ES = essence, GO = diesel (gazole). Je n'affiche que les pièces de ce moteur."
+        onChange={(fuel) => onChange({ ...value, fuel })}
+      />
       <DateField
         label="1re mise en circulation (B)"
         value={value.firstRegistration}
@@ -80,11 +89,12 @@ export function prefillHints(v: Vehicle): OwnerHints {
     model: up(v.declared?.model) ?? up(v.profile?.model),
     variant: up(v.declared?.variant),
     firstRegistration: v.declared?.firstRegistration ?? null,
+    fuel: v.declared?.fuel ?? v.fuel ?? null,
   };
 }
 
 /** Drops empty strings so the API gets only what the owner filled in. */
 export function cleanHints(h: OwnerHints): OwnerHints {
   const t = (s?: string | null) => (s && s.trim() ? s.trim() : undefined);
-  return { make: t(h.make), model: t(h.model), variant: t(h.variant), firstRegistration: t(h.firstRegistration) };
+  return { make: t(h.make), model: t(h.model), variant: t(h.variant), firstRegistration: t(h.firstRegistration), fuel: t(h.fuel) };
 }

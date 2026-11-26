@@ -62,7 +62,8 @@ function describe(p: VehicleProfile): string {
     p.modelYear && `Année : ${p.modelYear}`,
     p.engine.description && `Moteur : ${p.engine.description}`,
     p.engine.displacementL && `Cylindrée : ${p.engine.displacementL} L`,
-    p.engine.fuelType && `Carburant : ${p.engine.fuelType}`,
+    p.engine.fuelType &&
+      `Carburant : ${p.engine.fuelType.toUpperCase()} (n'inclus que les opérations de ce carburant : pas de bougies d'allumage pour un diesel, pas de bougies de préchauffage, AdBlue ou FAP pour un essence)`,
     p.transmission && `Boîte : ${p.transmission}`,
   ]
     .filter(Boolean)

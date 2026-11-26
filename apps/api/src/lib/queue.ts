@@ -18,6 +18,8 @@ export interface OwnerHints {
   variant?: string | null;
   /** First registration date as written on the card, e.g. 2020/11/30. */
   firstRegistration?: string | null;
+  /** Box P.3 "Énergie" of the card: Essence, Diesel... */
+  fuel?: string | null;
 }
 
 export interface VinJobData {

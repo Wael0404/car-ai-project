@@ -4,6 +4,7 @@ import { z } from "zod";
 import { config } from "../config.js";
 import { fallbackParams, webSearchTool } from "../lib/claude.js";
 import type { PlanItem } from "../lib/maintenance.js";
+import { conflictsWithFuel, normalizeFuel } from "../lib/fuel.js";
 import { recordUsage } from "../lib/usage.js";
 import type { VehicleProfile } from "./schema.js";
 
@@ -53,7 +54,8 @@ function describe(p: VehicleProfile, item: PlanItem): string {
   return [
     `Voiture : ${p.make} ${p.model}${p.generation ? ` (${p.generation})` : ""}${p.modelYear ? `, ${p.modelYear}` : ""}`,
     p.engine.description && `Moteur : ${p.engine.description}`,
-    p.engine.fuelType && `Carburant : ${p.engine.fuelType}`,
+    p.engine.fuelType &&
+      `Carburant : ${p.engine.fuelType.toUpperCase()} (ne retiens AUCUNE pièce prévue pour un moteur ${/diesel/i.test(p.engine.fuelType) ? "essence" : "diesel"})`,
     `Opération : ${item.action} — ${item.name}`,
     item.note && `Précision : ${item.note}`,
   ]
@@ -110,6 +112,8 @@ Fais une recherche web sur les boutiques tunisiennes pour trouver les prix des p
   const result = response.parsed_output;
   result.offers = result.offers
     .filter((o) => /^https?:\/\//i.test(o.url))
+    // Nothing made for the other engine ("pour 1.5 dCi" on a petrol car).
+    .filter((o) => !conflictsWithFuel(`${o.product} ${o.part}`, normalizeFuel(profile.engine?.fuelType)))
     .sort((a, b) => (a.priceTnd ?? Infinity) - (b.priceTnd ?? Infinity))
     .slice(0, 6);
   result.oemRefs = [...new Set(result.oemRefs.map((r) => r.trim()).filter((r) => r.length >= 3 && r.length <= 30 && /\d/.test(r)))].slice(0, 4);

@@ -46,6 +46,8 @@ model Vehicle {
   declaredMake      String? @db.VarChar(40)
   declaredModel     String? @db.VarChar(60)
   declaredVariant   String? @db.VarChar(80)
+  /// Carte grise box P.3 ("Énergie"): Essence, Diesel, Hybride, Électrique, GPL
+  declaredFuel      String? @db.VarChar(20)
   firstRegistration String? @db.VarChar(10)
   /// Odometer reading entered by the owner (km), for the maintenance plan.
   mileageKm         Int?

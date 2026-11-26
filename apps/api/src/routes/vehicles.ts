@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../lib/db.js";
 import { assetUrl, modelKey, resolveModel3D, type CatalogRow } from "../lib/model3d.js";
+import { conflictsWithFuel, FUELS, normalizeFuel, planItemFitsFuel, vehicleFuel, withDeclaredFuel } from "../lib/fuel.js";
 import { indicativeFile } from "../lib/indicativePhotos.js";
 import { brandFromTitle, guessPart } from "../lib/parts.js";
 import { enqueueVinResearch } from "../lib/queue.js";
@@ -9,7 +10,7 @@ import { normalizeCode } from "../lib/specReuse.js";
 import { buildReport, logEvent } from "../lib/history.js";
 import { buildOilLog } from "../lib/oilLog.js";
 import { computeDue, parseRegistrationDate, parseServiceDate, type PlanItem } from "../lib/maintenance.js";
-import { maintenanceKey } from "../maintenanceJobs.js";
+import { ensureMaintenancePlan, maintenanceKey } from "../maintenanceJobs.js";
 import { getOrQueuePrices, type StoredOffer } from "../priceJobs.js";
 import type { VehicleProfile } from "../agent/schema.js";
 import { validateVin } from "../lib/vin.js";
@@ -31,6 +32,8 @@ const OwnerHintsBody = z.object({
   model: optionalText(60),
   variant: optionalText(80),
   firstRegistration: optionalText(10),
+  /** Box P.3 of the card (ES, GO, Essence, Diesel...). */
+  fuel: optionalText(20),
 });
 
 const AddVehicleBody = OwnerHintsBody.extend({
@@ -56,6 +59,13 @@ const DoneBody = z.object({
 });
 
 const RecordParams = IdParamsShape().extend({ recordId: z.uuid() });
+const FuelBody = z.object({ fuel: z.string().trim().min(2).max(20) });
+
+/** Plan items for this car's fuel (no spark plugs on a diesel...). Unknown fuel: all. */
+function fuelItems(items: PlanItem[], v: { declaredFuel: string | null; spec: { data: unknown } }): PlanItem[] {
+  const fuel = vehicleFuel(v.declaredFuel, (v.spec.data as { engine?: { fuelType?: string | null } } | null)?.engine?.fuelType);
+  return items.filter((i) => planItemFitsFuel(i, fuel));
+}
 
 function IdParamsShape() {
   return z.object({ id: z.uuid() });
@@ -118,7 +128,10 @@ function toDto(v: VehicleWithSpec, catalog: Map<string, CatalogRow>) {
       model: v.declaredModel,
       variant: v.declaredVariant,
       firstRegistration: v.firstRegistration,
+      fuel: v.declaredFuel,
     },
+    /** Essence / Diesel...: the owner's card first, then the research. Null = to ask. */
+    fuel: vehicleFuel(v.declaredFuel, (spec?.status === "READY" ? (spec.data as { engine?: { fuelType?: string | null } } | null) : null)?.engine?.fuelType),
     createdAt: v.createdAt,
     status: spec?.status ?? "PENDING",
     profile: spec?.status === "READY" ? spec.data : null,
@@ -171,6 +184,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
       model: normalizeCode(body.model),
       variant: normalizeCode(body.variant),
       firstRegistration: body.firstRegistration,
+      fuel: normalizeFuel(body.fuel) ?? undefined,
     };
 
     const count = await prisma.vehicle.count({ where: { userId } });
@@ -198,6 +212,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
           declaredModel: hints.model ?? null,
           declaredVariant: hints.variant ?? null,
           firstRegistration: hints.firstRegistration ?? null,
+          declaredFuel: hints.fuel ?? null,
         },
         include: { spec: true },
       });
@@ -248,6 +263,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
         make: normalizeCode(raw.make),
         model: normalizeCode(raw.model),
         variant: normalizeCode(raw.variant),
+        fuel: normalizeFuel(raw.fuel) ?? undefined,
       };
       const vehicle = await prisma.vehicle.findFirst({ where: { id, userId: req.user.sub }, include: { spec: true } });
       if (!vehicle) return reply.code(404).send({ error: "Véhicule introuvable." });
@@ -260,6 +276,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
           declaredModel: hints.model ?? null,
           declaredVariant: hints.variant ?? null,
           firstRegistration: hints.firstRegistration ?? null,
+          declaredFuel: hints.fuel ?? null,
         },
       });
       await prisma.vehicleSpec.update({ where: { vin: vehicle.vin }, data: { status: "PENDING", error: null } });
@@ -268,6 +285,31 @@ export async function vehicleRoutes(app: FastifyInstance) {
       return reply.code(202).send({ ok: true });
     },
   );
+
+  /**
+   * "Essence ou diesel ?": the owner answers from the card (box P.3). The
+   * card wins over the research: the car's profile is corrected and its
+   * maintenance plan made for this fuel (one cheap AI run if not known yet).
+   */
+  app.post("/vehicles/:id/fuel", async (req, reply) => {
+    const { id } = IdParams.parse(req.params);
+    const { fuel: raw } = FuelBody.parse(req.body ?? {});
+    const fuel = normalizeFuel(raw);
+    if (!fuel) return reply.code(400).send({ error: `Carburant inconnu. Choisissez : ${FUELS.join(", ")}.` });
+    const vehicle = await prisma.vehicle.findFirst({ where: { id, userId: req.user.sub }, include: { spec: true } });
+    if (!vehicle) return reply.code(404).send({ error: "Véhicule introuvable." });
+
+    await prisma.vehicle.update({ where: { id }, data: { declaredFuel: fuel } });
+    const profile = vehicle.spec.status === "READY" ? (vehicle.spec.data as unknown as VehicleProfile | null) : null;
+    if (profile && normalizeFuel(profile.engine?.fuelType) !== fuel) {
+      const fixed = withDeclaredFuel(profile, fuel);
+      await prisma.vehicleSpec.update({ where: { vin: vehicle.vin }, data: { data: fixed as object } });
+      await ensureMaintenancePlan(fixed, req.log as unknown as Parameters<typeof ensureMaintenancePlan>[1]);
+    }
+    if (normalizeFuel(vehicle.declaredFuel) !== fuel) await logEvent(id, "info_corrected", { fuel });
+    const updated = await prisma.vehicle.findUniqueOrThrow({ where: { id }, include: { spec: true } });
+    return toDto(updated, await loadCatalog([updated]));
+  });
 
   /**
    * Maintenance: the shared plan of this car version + this owner's mileage
@@ -291,7 +333,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
       vehicle.mileageKm === null
         ? []
         : computeDue(
-            plan.items as unknown as PlanItem[],
+            fuelItems(plan.items as unknown as PlanItem[], vehicle),
             vehicle.mileageKm,
             vehicle.maintenanceRecords,
             parseRegistrationDate(vehicle.firstRegistration),
@@ -356,9 +398,13 @@ export async function vehicleRoutes(app: FastifyInstance) {
     if (!profile || !planKey || !item) return reply.code(404).send({ error: "Élément d'entretien introuvable." });
 
     const { row, enriching } = await getOrQueuePrices(`${planKey}|${itemId}`, profile, item);
-    const offers = Array.isArray(row.offers) ? (row.offers as unknown as StoredOffer[]) : [];
+    const fuel = vehicleFuel(vehicle.declaredFuel, profile.engine?.fuelType);
+    const offers = (Array.isArray(row.offers) ? (row.offers as unknown as StoredOffer[]) : []).filter(
+      (o) => !conflictsWithFuel(`${o.product} ${o.part ?? ""}`, fuel),
+    );
     return {
       status: row.status,
+      fuel,
       offers: offers.map((o) => {
         const part = o.part || guessPart(o.product);
         // Its own photo when found, else a typical photo of this part ("Photo indicative").

@@ -51,6 +51,7 @@ function ownerBlock(hints?: OwnerHints): string {
     hints?.model && `- Type commercial : ${hints.model}`,
     hints?.variant && `- Type constructeur (code) : ${hints.variant}`,
     hints?.firstRegistration && `- Date de première mise en circulation : ${hints.firstRegistration}`,
+    hints?.fuel && `- Énergie (case P.3) : ${hints.fuel} (certain : le moteur trouvé doit être ${hints.fuel.toLowerCase()})`,
   ].filter(Boolean);
   return lines.length
     ? `Informations déclarées par le propriétaire (carte grise) :\n<owner_data>\n${lines.join("\n")}\n</owner_data>`

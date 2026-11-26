@@ -25,6 +25,7 @@ import { ensureModel3D, runModel3DSearch } from "./model3dJobs.js";
 import { ensureMaintenancePlan, runMaintenancePlan } from "./maintenanceJobs.js";
 import { runPriceEnrichment, runPriceLookup } from "./priceJobs.js";
 import { findReusableProfile } from "./lib/specReuse.js";
+import { withDeclaredFuel } from "./lib/fuel.js";
 import { logEventForVin } from "./lib/history.js";
 import { ensureIndicativePhotos } from "./lib/indicativePhotos.js";
 import { createQueueConnection } from "./lib/redis.js";
@@ -41,10 +42,10 @@ const worker = new Worker<VinJobData>(
     // Free: same make + type constructeur + year already researched for another owner.
     const reused = await findReusableProfile(vin, hints);
     if (reused) {
-      const p = reused as unknown as VehicleProfile;
+      const p = withDeclaredFuel(reused as unknown as VehicleProfile, hints?.fuel);
       await prisma.vehicleSpec.update({
         where: { vin },
-        data: { status: "READY", make: p.make, model: p.model, modelYear: p.modelYear, bodyType: p.bodyType, data: reused, error: null },
+        data: { status: "READY", make: p.make, model: p.model, modelYear: p.modelYear, bodyType: p.bodyType, data: p as object, error: null },
       });
       log.info({ vin, make: p.make, model: p.model }, "Profile reused from same type code (no AI cost)");
       await logEventForVin(vin, "analysis_ready", { make: p.make, model: p.model });
@@ -57,7 +58,7 @@ const worker = new Worker<VinJobData>(
     log.info({ vin, attempt: job.attemptsMade + 1 }, "Researching VIN");
 
     try {
-      const profile = await researchVehicle(vin, hints);
+      const profile = withDeclaredFuel(await researchVehicle(vin, hints), hints?.fuel);
       await prisma.vehicleSpec.update({
         where: { vin },
         data: {

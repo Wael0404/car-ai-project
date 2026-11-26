@@ -129,6 +129,7 @@ export const api = {
   getGarages: (lat: number, lon: number) =>
     request<{ garages: Garage[] }>(`/garages?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`),
   getOilLog: (id: string) => request<OilLog>(`/vehicles/${id}/oil-log`),
+  setFuel: (id: string, fuel: string) => request<Vehicle>(`/vehicles/${id}/fuel`, { method: "POST", body: JSON.stringify({ fuel }) }),
   getCatalog: () => request<{ makes: CatalogMake[] }>("/catalog/makes"),
   markMaintenanceDone: (id: string, itemId: string, input: DoneInput) =>
     request<{ ok: true; recordId: string }>(`/vehicles/${id}/maintenance/${encodeURIComponent(itemId)}/done`, {

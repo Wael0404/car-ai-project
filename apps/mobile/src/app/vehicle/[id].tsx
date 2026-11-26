@@ -13,12 +13,49 @@ import { Appear, Button, Card, Pill, Row, Screen, ScrollTabs, SectionTitle, Skel
 import { vehicleTitle } from "@/lib/format";
 import { space, useTheme } from "@/lib/theme";
 import type { Maintenance, OwnerHints, Vehicle } from "@/lib/types";
-import { useDeleteVehicle, useMaintenance, useResearchAgain, useVehicle } from "@/lib/vehicles";
+import { useDeleteVehicle, useMaintenance, useResearchAgain, useSetFuel, useVehicle } from "@/lib/vehicles";
 
 type Tab = "entretien" | "carnet" | "historique" | "fiche" | "reglages";
 const CONFIDENCE = { high: "élevée", medium: "moyenne", low: "faible" } as const;
 
 /** What Robi says on this car, depending on where the analysis stands. */
+/**
+ * Robi asks "essence ou diesel ?" when it could not find it: spark plugs,
+ * fuel filter, glow plugs and many parts depend on it.
+ */
+function FuelQuestion({ v, onOther }: { v: Vehicle; onOther: () => void }) {
+  const setFuel = useSetFuel(v.id);
+  const robi = useRobi();
+  function answer(fuel: string) {
+    setFuel.mutate(fuel, {
+      onSuccess: () =>
+        robi.say(`Moteur ${fuel.toLowerCase()} : je n'affiche plus que les entretiens et les pièces faits pour lui.`, {
+          title: "C'est noté",
+          mood: "celebrate",
+        }),
+    });
+  }
+  return (
+    <RobotGuide mood="thinking" title="Essence ou diesel ?">
+      <View style={{ gap: space.md, marginTop: 4 }}>
+        <Txt variant="caption" tone="muted">
+          Je n'ai pas pu le trouver avec le VIN. Regardez la case P.3 de votre carte grise : ES = essence, GO = diesel.
+        </Txt>
+        <View style={{ flexDirection: "row", gap: space.sm }}>
+          <View style={{ flex: 1 }}>
+            <Button label="Essence" variant="secondary" size="md" loading={setFuel.isPending && setFuel.variables === "Essence"} disabled={setFuel.isPending} onPress={() => answer("Essence")} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button label="Diesel" variant="secondary" size="md" loading={setFuel.isPending && setFuel.variables === "Diesel"} disabled={setFuel.isPending} onPress={() => answer("Diesel")} />
+          </View>
+        </View>
+        <Button label="Hybride, électrique ou GPL" variant="ghost" size="md" onPress={onOther} />
+        {setFuel.error ? <Txt tone="danger">{setFuel.error.message}</Txt> : null}
+      </View>
+    </RobotGuide>
+  );
+}
+
 function Guide({ v, m, onFix }: { v: Vehicle; m: Maintenance | undefined; onFix: () => void }) {
   const searching3d = v.model3d?.kind === "procedural" && v.model3d.searching === true;
   const planPending = !m || m.status === "PENDING";
@@ -47,6 +84,7 @@ function Guide({ v, m, onFix }: { v: Vehicle; m: Maintenance | undefined; onFix:
       </RobotGuide>
     );
   }
+  if (!v.fuel) return <FuelQuestion v={v} onOther={onFix} />;
   if (v.mileageKm === null) {
     return (
       <RobotGuide mood="happy" title="Votre voiture est prête">
@@ -108,7 +146,7 @@ function Specs({ v }: { v: Vehicle }) {
         <Row label="Cylindrée" value={e.displacementL ? `${e.displacementL.toFixed(1)} L` : null} />
         <Row label="Cylindres" value={e.cylinders} />
         <Row label="Puissance" value={e.powerHp ? `${e.powerHp} ch` : null} />
-        <Row label="Carburant" value={e.fuelType} />
+        <Row label="Carburant" value={v.fuel ?? e.fuelType ?? "À indiquer"} />
         <Row label="Boîte" value={p.transmission} />
         <Row label="Transmission" value={p.drivetrain} />
         <Row label="Constructeur" value={p.manufacturer} />
@@ -263,7 +301,7 @@ function Dashboard({ id }: { id: string }) {
         {p ? (
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.sm }}>
             {p.modelYear ? <Pill label={String(p.modelYear)} icon="calendar" /> : null}
-            {p.engine.fuelType ? <Pill label={p.engine.fuelType} icon="water" /> : null}
+            {v.fuel ? <Pill label={v.fuel} icon={v.fuel === "Électrique" ? "flash" : "water"} tone="primary" /> : <Pill label="Carburant à indiquer" icon="help-circle" tone="warning" />}
             <Pill label={p.bodyVariant && p.bodyVariant !== "standard" ? p.bodyVariant : "Version standard"} icon="car-sport" />
           </View>
         ) : null}

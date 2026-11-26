@@ -57,6 +57,20 @@ export function useResearchAgain(id: string) {
   });
 }
 
+/** "Essence ou diesel ?": plan, prices and parts then follow this fuel. */
+export function useSetFuel(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (fuel: string) => api.setFuel(id, fuel),
+    onSuccess: (vehicle) => {
+      qc.setQueryData(["vehicles", id], vehicle);
+      void qc.invalidateQueries({ queryKey: ["vehicles"], exact: true });
+      void qc.invalidateQueries({ queryKey: ["prices", id] });
+      void invalidateCar(qc, id);
+    },
+  });
+}
+
 export function useDeleteVehicle() {
   const qc = useQueryClient();
   return useMutation({

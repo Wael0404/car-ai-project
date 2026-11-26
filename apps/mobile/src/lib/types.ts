@@ -83,6 +83,7 @@ export interface OwnerHints {
   model?: string | null; // Type commercial
   variant?: string | null; // Type constructeur
   firstRegistration?: string | null; // Date de 1re mise en circulation
+  fuel?: string | null; // Énergie (P.3) : Essence, Diesel...
 }
 
 export interface Vehicle {
@@ -92,6 +93,8 @@ export interface Vehicle {
   color: string;
   mileageKm: number | null;
   declared: OwnerHints;
+  /** Essence / Diesel...: the carte grise first, then the research. Null: ask the owner. */
+  fuel: string | null;
   createdAt: string;
   status: "PENDING" | "READY" | "FAILED";
   profile: VehicleProfile | null;
