@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from
 import {
   ActivityIndicator,
   Animated,
+  Easing,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -396,34 +397,142 @@ export function Skeleton({ height = 16, width = "100%", style }: { height?: numb
   return <Animated.View style={[{ height, width, borderRadius: radius.sm, backgroundColor: t.surface2, opacity }, style]} />;
 }
 
-/** Steps of a background job, e.g. the AI analysis of a new car. */
-export function Steps({ steps }: { steps: Array<{ label: string; state: "done" | "active" | "todo" }> }) {
+type StepState = "done" | "active" | "todo";
+
+/** "…" that grows while the agent is working on a step. */
+function WorkingDots() {
+  const reduceMotion = useReduceMotion();
+  const [n, setN] = useState(3);
+  useEffect(() => {
+    if (reduceMotion) return;
+    const timer = setInterval(() => setN((x) => (x % 3) + 1), 420);
+    return () => clearInterval(timer);
+  }, [reduceMotion]);
+  return <Text>{".".repeat(n) + " ".repeat(3 - n)}</Text>;
+}
+
+function StepRow({ label, state }: { label: string; state: StepState }) {
   const t = useTheme();
+  const reduceMotion = useReduceMotion();
+  const [pop] = useState(() => new Animated.Value(state === "done" ? 1 : 0));
+  const [pulse] = useState(() => new Animated.Value(0));
+  const wasDone = useRef(state === "done");
+
+  // Check mark pops when a step gets done (not when it was already done).
+  useEffect(() => {
+    const done = state === "done";
+    if (done && !wasDone.current && !reduceMotion) {
+      pop.setValue(0.3);
+      Animated.spring(pop, { toValue: 1, useNativeDriver: true, speed: 16, bounciness: 14 }).start();
+    } else {
+      pop.setValue(done ? 1 : 0);
+    }
+    wasDone.current = done;
+  }, [state, reduceMotion, pop]);
+
+  // The step being worked on sends out a soft ring.
+  useEffect(() => {
+    if (state !== "active" || reduceMotion) return;
+    const a = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 1100, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ]),
+    );
+    a.start();
+    return () => a.stop();
+  }, [state, reduceMotion, pulse]);
+
+  return (
+    <View
+      style={{ flexDirection: "row", alignItems: "center", gap: space.md }}
+      accessible
+      accessibilityLabel={`${label} : ${state === "done" ? "terminé" : state === "active" ? "en cours" : "à venir"}`}
+    >
+      <View style={{ width: 26, height: 26, alignItems: "center", justifyContent: "center" }}>
+        {state === "active" ? (
+          <Animated.View
+            style={{
+              position: "absolute",
+              width: 26,
+              height: 26,
+              borderRadius: 13,
+              backgroundColor: t.primary,
+              opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0] }),
+              transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.9] }) }],
+            }}
+          />
+        ) : null}
+        <Animated.View
+          style={[
+            styles.stepDot,
+            {
+              backgroundColor: state === "done" ? t.success : state === "active" ? t.primarySoft : t.surface2,
+              borderColor: state === "active" ? t.primary : "transparent",
+              transform: state === "done" ? [{ scale: pop }] : [],
+            },
+          ]}
+        >
+          {state === "done" ? (
+            <Ionicons name="checkmark" size={14} color="#fff" />
+          ) : state === "active" ? (
+            <ActivityIndicator size="small" color={t.primary} />
+          ) : null}
+        </Animated.View>
+      </View>
+      <Txt
+        tone={state === "todo" ? "muted" : "default"}
+        style={[{ flex: 1 }, state === "active" ? { fontFamily: type.bodyStrong.fontFamily } : undefined]}
+      >
+        {label}
+        {state === "active" ? <WorkingDots /> : null}
+      </Txt>
+    </View>
+  );
+}
+
+/** Steps of a job Robi is doing, e.g. the analysis of a new car: live, like an agent at work. */
+export function Steps({ steps }: { steps: Array<{ label: string; state: StepState }> }) {
   return (
     <View style={{ gap: space.md }}>
       {steps.map((s) => (
-        <View key={s.label} style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
-          <View
-            style={[
-              styles.stepDot,
-              {
-                backgroundColor: s.state === "done" ? t.success : s.state === "active" ? t.primarySoft : t.surface2,
-                borderColor: s.state === "active" ? t.primary : "transparent",
-              },
-            ]}
-          >
-            {s.state === "done" ? (
-              <Ionicons name="checkmark" size={14} color="#fff" />
-            ) : s.state === "active" ? (
-              <ActivityIndicator size="small" color={t.primary} />
-            ) : null}
-          </View>
-          <Txt tone={s.state === "todo" ? "muted" : "default"} style={s.state === "active" ? { fontFamily: type.bodyStrong.fontFamily } : undefined}>
-            {s.label}
-          </Txt>
-        </View>
+        <StepRow key={s.label} label={s.label} state={s.state} />
       ))}
     </View>
+  );
+}
+
+/**
+ * Content that slides up gently when it first appears; `index` staggers a
+ * list (cards come one after the other). Still when motion is reduced.
+ */
+export function Appear({ index = 0, children, style }: { index?: number; children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  const reduceMotion = useReduceMotion();
+  const [v] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    if (reduceMotion) {
+      v.setValue(1);
+      return;
+    }
+    const a = Animated.timing(v, {
+      toValue: 1,
+      duration: 320,
+      delay: Math.min(index, 8) * 60,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    a.start();
+    return () => a.stop();
+  }, [v, index, reduceMotion]);
+  return (
+    <Animated.View
+      style={[
+        style,
+        { opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] },
+      ]}
+    >
+      {children}
+    </Animated.View>
   );
 }
 

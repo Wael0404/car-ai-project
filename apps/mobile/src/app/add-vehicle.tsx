@@ -12,6 +12,7 @@ import { ApiError } from "@/lib/api";
 import { PAINT_COLORS, space, useTheme } from "@/lib/theme";
 import type { OwnerHints } from "@/lib/types";
 import { useAddVehicle } from "@/lib/vehicles";
+import { useRobi } from "@/components/RobiToast";
 import { normalizeVin, vinError } from "@/lib/vin";
 
 const STEPS = ["Numéro VIN", "Carte grise", "Couleur"];
@@ -40,6 +41,7 @@ function AddVehicleForm() {
   const [nickname, setNickname] = useState("");
   const [color, setColor] = useState(PAINT_COLORS[2]!.hex);
   const add = useAddVehicle();
+  const robi = useRobi();
 
   const normalized = normalizeVin(vin);
   const localError = vinError(vin);
@@ -58,6 +60,7 @@ function AddVehicleForm() {
       {
         onSuccess: (vehicle) => {
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          robi.say("J'analyse votre voiture : fiche, photos et plan d'entretien. Environ une minute.", { title: "Voiture ajoutée !", mood: "celebrate" });
           router.replace({ pathname: "/vehicle/[id]", params: { id: vehicle.id } });
         },
         // Only a VIN problem sends the owner back to the first step; a network

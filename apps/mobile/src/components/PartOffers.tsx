@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { Image, Linking, Modal, Pressable, ScrollView, Share, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Button, Card, Pill, Skeleton, Txt, type IconName } from "@/components/ui";
+import { Appear, Button, Card, Pill, Skeleton, Txt, type IconName } from "@/components/ui";
 import { tnd } from "@/lib/format";
 import { font, radius, space, useTheme } from "@/lib/theme";
 import type { PartOffer, PartPrices } from "@/lib/types";
@@ -282,11 +282,12 @@ export function PartOffers({ data, icon }: { data: PartPrices; icon: IconName })
         </Txt>
       ) : null}
 
-      {groups.map((g) => {
+      {groups.map((g, gi) => {
         const prices = g.offers.map((o) => o.priceTnd).filter((p): p is number => p !== null);
         const min = prices.length ? Math.min(...prices) : null;
         return (
-          <Card key={g.part} padded={false} style={{ overflow: "hidden", gap: 0 }}>
+          <Appear key={g.part} index={gi}>
+          <Card padded={false} style={{ overflow: "hidden", gap: 0 }}>
             <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", paddingHorizontal: space.lg, paddingTop: space.lg, paddingBottom: space.sm, gap: space.md }}>
               <Txt variant="heading" accessibilityRole="header" style={{ flex: 1 }}>
                 {g.part}
@@ -308,6 +309,7 @@ export function PartOffers({ data, icon }: { data: PartPrices; icon: IconName })
               />
             ))}
           </Card>
+          </Appear>
         );
       })}
 

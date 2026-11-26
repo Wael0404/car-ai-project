@@ -7,7 +7,7 @@ import { CATEGORY_ICON } from "@/components/MaintenanceSection";
 import { PartOffers } from "@/components/PartOffers";
 import { RequireAuth } from "@/components/RequireAuth";
 import { RobotGuide } from "@/components/Robot";
-import { Button, Card, Pill, Screen, SectionTitle, Skeleton, Txt, type IconName } from "@/components/ui";
+import { Button, Card, Pill, Screen, SectionTitle, Skeleton, Steps, Txt, type IconName } from "@/components/ui";
 import { tnd } from "@/lib/format";
 import { radius, space, useTheme } from "@/lib/theme";
 import type { Garage, PartPrices } from "@/lib/types";
@@ -133,6 +133,37 @@ function GarageRow({ g, first }: { g: Garage; first: boolean }) {
   );
 }
 
+/**
+ * What Robi is doing while it searches (about 30 s): the steps of the real
+ * search, advanced with time since the agent does not report them one by one.
+ */
+function PriceSearchSteps({ car }: { car: string }) {
+  const [start] = useState(() => Date.now());
+  const [now, setNow] = useState(start);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const s = (now - start) / 1000;
+  const at = (from: number, to: number) => (s >= to ? "done" : s >= from ? "active" : "todo");
+  return (
+    <View style={{ gap: space.sm, marginTop: space.sm }}>
+      <Steps
+        steps={[
+          { label: `Je cherche les pièces pour votre ${car}`, state: at(0, 6) },
+          { label: "Je compare les boutiques tunisiennes", state: at(6, 16) },
+          { label: "Je vérifie la compatibilité", state: at(16, 26) },
+          // Last step stays "active" until the results arrive.
+          { label: "Je récupère les photos et les références", state: s >= 26 ? "active" : "todo" },
+        ]}
+      />
+      <Txt variant="caption" tone="muted">
+        Environ 30 secondes. Vous pouvez quitter cet écran, je continue.
+      </Txt>
+    </View>
+  );
+}
+
 function ItemScreen({ vehicleId, itemId }: { vehicleId: string; itemId: string }) {
   const t = useTheme();
   const prices = usePartPrices(vehicleId, itemId);
@@ -204,8 +235,8 @@ function ItemScreen({ vehicleId, itemId }: { vehicleId: string; itemId: string }
       </View>
 
       {prices.data.status === "PENDING" ? (
-        <RobotGuide mood="thinking" title="Je compare les prix" compact>
-          Je cherche les pièces compatibles dans les boutiques en ligne tunisiennes. Cela prend environ 30 secondes.
+        <RobotGuide mood="thinking" title="Je compare les prix pour vous">
+          <PriceSearchSteps car={car} />
         </RobotGuide>
       ) : (
         <RobotGuide mood="happy" compact>

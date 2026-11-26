@@ -12,6 +12,7 @@ import { router, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
+import { RobiProvider } from "@/components/RobiToast";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { Txt } from "@/components/ui";
 import { ApiError } from "@/lib/api";
@@ -96,7 +97,9 @@ export default function RootLayout() {
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <Root />
+          <RobiProvider>
+            <Root />
+          </RobiProvider>
         </AuthProvider>
       </QueryClientProvider>
     </ThemeProvider>

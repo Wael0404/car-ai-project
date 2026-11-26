@@ -1,10 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Link, router } from "expo-router";
-import { FlatList, Image, Pressable, RefreshControl, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Animated, Easing, FlatList, Image, Pressable, RefreshControl, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { RequireAuth } from "@/components/RequireAuth";
-import { RobotGuide } from "@/components/Robot";
-import { Button, Card, IconButton, Pill, Skeleton, Txt } from "@/components/ui";
+import { useRobi } from "@/components/RobiToast";
+import { Robot, RobotGuide } from "@/components/Robot";
+import { Appear, Button, Card, IconButton, Pill, Skeleton, Txt } from "@/components/ui";
+import { useReduceMotion } from "@/lib/motion";
 import { vehicleTitle } from "@/lib/format";
 import { radius, space, useTheme } from "@/lib/theme";
 import type { Vehicle } from "@/lib/types";
@@ -29,7 +32,7 @@ function VehicleCard({ v }: { v: Vehicle }) {
       <Pressable accessibilityRole="button" accessibilityLabel={`Ouvrir ${vehicleTitle(v)}`}>
         {({ pressed }) => (
           <Card padded={false} style={{ overflow: "hidden", opacity: pressed ? 0.9 : 1 }}>
-            <View style={{ height: 150, backgroundColor: t.surface2, alignItems: "center", justifyContent: "center" }}>
+            <View style={{ height: 150, backgroundColor: t.surface2, alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
               {thumb ? (
                 <Image source={{ uri: thumb }} style={{ width: "100%", height: "100%" }} resizeMode="cover" accessibilityIgnoresInvertColors />
               ) : (
@@ -38,6 +41,7 @@ function VehicleCard({ v }: { v: Vehicle }) {
                   <Ionicons name="car-sport" size={28} color={t.muted} />
                 </View>
               )}
+              {v.status === "PENDING" ? <ScanSweep /> : null}
             </View>
             <View style={{ padding: space.lg, gap: 6 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space.sm }}>
@@ -64,9 +68,71 @@ function VehicleCard({ v }: { v: Vehicle }) {
   );
 }
 
+/** A beam of light sweeping across the card while Robi analyses the car. */
+function ScanSweep() {
+  const t = useTheme();
+  const reduceMotion = useReduceMotion();
+  const [x] = useState(() => new Animated.Value(0));
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    if (reduceMotion || width === 0) return;
+    const a = Animated.loop(
+      Animated.sequence([
+        Animated.timing(x, { toValue: 1, duration: 1600, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.delay(300),
+        Animated.timing(x, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ]),
+    );
+    a.start();
+    return () => a.stop();
+  }, [x, width, reduceMotion]);
+  if (reduceMotion) return null;
+  return (
+    <View pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+      <Animated.View
+        style={{
+          position: "absolute",
+          top: -20,
+          bottom: -20,
+          width: 70,
+          backgroundColor: t.primary,
+          opacity: 0.22,
+          transform: [{ translateX: x.interpolate({ inputRange: [0, 1], outputRange: [-90, width + 20] }) }, { rotate: "14deg" }],
+        }}
+      />
+      <Animated.View
+        style={{
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          width: 2,
+          backgroundColor: t.primary,
+          opacity: 0.7,
+          transform: [{ translateX: x.interpolate({ inputRange: [0, 1], outputRange: [-20, width + 60] }) }],
+        }}
+      />
+    </View>
+  );
+}
+
+const TIPS = [
+  "Mettez à jour le kilométrage de temps en temps : je recalcule tout pour vous.",
+  "Dans l'onglet Entretien, touchez une pièce pour voir les prix et les garages proches.",
+  "Le Carnet de vidange vous dit combien de kilomètres il reste avant la prochaine vidange.",
+  "Quand un entretien est fait, touchez « C'est fait » : je le note dans l'historique.",
+];
+
+/** "Bonjour" / "Bonsoir" by the time of day. */
+const greeting = () => {
+  const h = new Date().getHours();
+  return h >= 18 || h < 5 ? "Bonsoir !" : "Bonjour !";
+};
+
 function GarageList() {
   const t = useTheme();
   const insets = useSafeAreaInsets();
+  const robi = useRobi();
+  const [tip, setTip] = useState(0);
   const { data, isLoading, isRefetching, refetch, error } = useVehicles();
   const cars = data ?? [];
   const pending = cars.find((c) => c.status === "PENDING");
@@ -96,10 +162,18 @@ function GarageList() {
 
   return (
     <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: t.bg }}>
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: space.lg, paddingTop: space.sm }}>
-        <View>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: space.lg, paddingTop: space.sm, gap: space.md }}>
+        <Robot
+          size={48}
+          mood="wave"
+          onPress={() => {
+            robi.say(TIPS[tip % TIPS.length]!, { title: "Astuce de Robi" });
+            setTip(tip + 1);
+          }}
+        />
+        <View style={{ flex: 1 }}>
           <Txt variant="caption" tone="muted">
-            Car AI
+            {greeting()}
           </Txt>
           <Txt variant="display">Mes voitures</Txt>
         </View>
@@ -118,7 +192,11 @@ function GarageList() {
           contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: 120 }}
           refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} tintColor={t.primary} />}
           ListHeaderComponent={guide}
-          renderItem={({ item }) => <VehicleCard v={item} />}
+          renderItem={({ item, index }) => (
+            <Appear index={index + 1}>
+              <VehicleCard v={item} />
+            </Appear>
+          )}
         />
       )}
 

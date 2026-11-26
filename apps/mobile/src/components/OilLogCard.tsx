@@ -7,6 +7,7 @@ import { dateFr, dateLongFr, everyMonthsFr, km, monthsFr, tnd } from "@/lib/form
 import { font, radius, space, useTheme } from "@/lib/theme";
 import type { OilLog } from "@/lib/types";
 import { useOilLog, useUndoMaintenance } from "@/lib/vehicles";
+import { useRobi } from "@/components/RobiToast";
 
 type Next = NonNullable<OilLog["next"]>;
 type Item = NonNullable<OilLog["item"]>;
@@ -89,6 +90,7 @@ export function OilLogCard({ vehicleId, mileageKm }: { vehicleId: string; mileag
   const t = useTheme();
   const log = useOilLog(vehicleId);
   const undo = useUndoMaintenance(vehicleId);
+  const robi = useRobi();
   // "other": enter a past oil change (from the paper logbook or an invoice).
   const [adding, setAdding] = useState<null | "today" | "other">(null);
 
@@ -132,7 +134,11 @@ export function OilLogCard({ vehicleId, mileageKm }: { vehicleId: string; mileag
       {
         text: "Supprimer",
         style: "destructive",
-        onPress: () => undo.mutate(recordId, { onError: (err) => Alert.alert("Suppression impossible", err.message) }),
+        onPress: () =>
+          undo.mutate(recordId, {
+            onSuccess: () => robi.say("Vidange retirée du carnet. J'ai recalculé la prochaine."),
+            onError: (err) => Alert.alert("Suppression impossible", err.message),
+          }),
       },
     ]);
   }
@@ -250,6 +256,7 @@ export function OilLogCard({ vehicleId, mileageKm }: { vehicleId: string; mileag
           intro="Indiquez la date et le kilométrage de la vidange, comme sur votre carnet ou votre facture."
           currentKm={mileageKm}
           initialWhen={adding}
+          successText="Vidange enregistrée dans le carnet. J'ai recalculé la prochaine."
           onClose={() => setAdding(null)}
         />
       ) : null}

@@ -9,6 +9,7 @@ import { dateFr, dateLongFr, km, MONTHS_FR, tnd } from "@/lib/format";
 import { font, radius, space, useTheme, PAINT_COLORS } from "@/lib/theme";
 import type { Report, VehicleEvent } from "@/lib/types";
 import { useHistory, useReport, useUndoMaintenance } from "@/lib/vehicles";
+import { useRobi } from "@/components/RobiToast";
 
 /**
  * Everything done on the car, in the order an owner looks for it:
@@ -95,6 +96,7 @@ function Summary({ rows }: { rows: Array<{ icon: IconName; label: string; value:
 function Services({ vehicleId, records }: { vehicleId: string; records: Report["records"] }) {
   const t = useTheme();
   const undo = useUndoMaintenance(vehicleId);
+  const robi = useRobi();
   const [all, setAll] = useState(false);
   const shown = all ? records : records.slice(0, 8);
 
@@ -115,7 +117,11 @@ function Services({ vehicleId, records }: { vehicleId: string; records: Report["
       {
         text: "Supprimer",
         style: "destructive",
-        onPress: () => undo.mutate(id, { onError: (err) => Alert.alert("Suppression impossible", err.message) }),
+        onPress: () =>
+          undo.mutate(id, {
+            onSuccess: () => robi.say(`« ${name} » est retiré. J'ai remis à jour vos entretiens.`),
+            onError: (err) => Alert.alert("Suppression impossible", err.message),
+          }),
       },
     ]);
   }

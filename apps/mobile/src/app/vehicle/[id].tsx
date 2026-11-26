@@ -8,7 +8,8 @@ import { MaintenanceSection } from "@/components/MaintenanceSection";
 import { cleanHints, OwnerHintsFields, prefillHints } from "@/components/OwnerHintsFields";
 import { RequireAuth } from "@/components/RequireAuth";
 import { RobotGuide } from "@/components/Robot";
-import { Button, Card, Pill, Row, Screen, ScrollTabs, SectionTitle, Skeleton, Steps, Txt } from "@/components/ui";
+import { useRobi } from "@/components/RobiToast";
+import { Appear, Button, Card, Pill, Row, Screen, ScrollTabs, SectionTitle, Skeleton, Steps, Txt } from "@/components/ui";
 import { vehicleTitle } from "@/lib/format";
 import { space, useTheme } from "@/lib/theme";
 import type { Maintenance, OwnerHints, Vehicle } from "@/lib/types";
@@ -132,6 +133,7 @@ function Specs({ v }: { v: Vehicle }) {
 function Settings({ v, onDeleted, startOpen }: { v: Vehicle; onDeleted: () => void; startOpen: boolean }) {
   const research = useResearchAgain(v.id);
   const remove = useDeleteVehicle();
+  const robi = useRobi();
   // Opened by "Ce n'est pas ma voiture ?": filled in with what is already known.
   const [editing, setEditing] = useState(startOpen);
   const [hints, setHints] = useState<OwnerHints>(() => prefillHints(v));
@@ -144,7 +146,10 @@ function Settings({ v, onDeleted, startOpen }: { v: Vehicle; onDeleted: () => vo
         style: "destructive",
         onPress: () =>
           remove.mutate(v.id, {
-            onSuccess: onDeleted,
+            onSuccess: () => {
+              robi.say("La voiture est retirée de votre compte.");
+              onDeleted();
+            },
             onError: (err) => Alert.alert("Suppression impossible", err.message),
           }),
       },
@@ -182,7 +187,14 @@ function Settings({ v, onDeleted, startOpen }: { v: Vehicle; onDeleted: () => vo
               icon="refresh"
               disabled={v.status === "PENDING" || !hints.make}
               loading={research.isPending}
-              onPress={() => research.mutate(cleanHints(hints), { onSuccess: () => setEditing(false) })}
+              onPress={() =>
+                research.mutate(cleanHints(hints), {
+                  onSuccess: () => {
+                    setEditing(false);
+                    robi.say("Je relance l'analyse avec les infos de votre carte grise.", { title: "C'est parti", mood: "thinking" });
+                  },
+                })
+              }
             />
             <Button label="Annuler" variant="ghost" size="md" onPress={() => setEditing(false)} />
           </>
@@ -278,6 +290,7 @@ function Dashboard({ id }: { id: string }) {
         ]}
       />
 
+      <Appear key={tab} style={{ gap: space.lg }}>
       {tab === "entretien" &&
         (v.status === "READY" ? (
           <MaintenanceSection
@@ -311,6 +324,7 @@ function Dashboard({ id }: { id: string }) {
           </Card>
         ))}
       {tab === "reglages" && <Settings v={v} startOpen={fixRequested || v.status === "FAILED"} onDeleted={() => router.back()} />}
+      </Appear>
       <View style={{ height: space.sm, backgroundColor: t.bg }} />
     </Screen>
   );

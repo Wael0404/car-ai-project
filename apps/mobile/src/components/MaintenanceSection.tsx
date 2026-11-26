@@ -5,11 +5,12 @@ import { useState } from "react";
 import { Pressable, View } from "react-native";
 import { DoneSheet } from "@/components/DoneSheet";
 import { RobotGuide } from "@/components/Robot";
-import { Button, Card, Field, Pill, SectionTitle, Skeleton, Txt, type IconName } from "@/components/ui";
+import { Appear, Button, Card, Field, Pill, SectionTitle, Skeleton, Txt, type IconName } from "@/components/ui";
 import { dateFr, km } from "@/lib/format";
 import { font, radius, space, useTheme } from "@/lib/theme";
 import type { Maintenance, MaintenanceItem } from "@/lib/types";
 import { useUpdateVehicle } from "@/lib/vehicles";
+import { useRobi } from "@/components/RobiToast";
 
 const ACTION: Record<MaintenanceItem["action"], string> = {
   remplacer: "Remplacer",
@@ -123,6 +124,7 @@ function ItemCard({ item, vehicleId, mileageKm }: { item: MaintenanceItem; vehic
 function MileageCard({ vehicleId, mileageKm }: { vehicleId: string; mileageKm: number | null }) {
   const t = useTheme();
   const update = useUpdateVehicle(vehicleId);
+  const robi = useRobi();
   const [editing, setEditing] = useState(mileageKm === null);
   const [input, setInput] = useState(mileageKm !== null ? String(mileageKm) : "");
   const value = Number(input);
@@ -170,6 +172,7 @@ function MileageCard({ vehicleId, mileageKm }: { vehicleId: string; mileageKm: n
             {
               onSuccess: () => {
                 void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                robi.say(`Compteur à ${km(value)} : j'ai recalculé tous vos entretiens.`, { title: "C'est noté", mood: "celebrate" });
                 setEditing(false);
               },
             },
@@ -256,7 +259,12 @@ export function MaintenanceSection({
                 >
                   {g.title} ({list.length})
                 </SectionTitle>
-                {!hidden && list.map((i) => <ItemCard key={i.id} item={i} vehicleId={vehicleId} mileageKm={mileageKm} />)}
+                {!hidden &&
+                  list.map((i, n) => (
+                    <Appear key={i.id} index={n}>
+                      <ItemCard item={i} vehicleId={vehicleId} mileageKm={mileageKm} />
+                    </Appear>
+                  ))}
               </View>
             );
           })}

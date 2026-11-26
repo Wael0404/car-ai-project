@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button, Field, Segmented, Txt } from "@/components/ui";
 import { checkDayFr, maskDayFr } from "@/lib/format";
 import { font, radius, space, useTheme } from "@/lib/theme";
+import { useRobi } from "@/components/RobiToast";
 import { useMarkMaintenanceDone } from "@/lib/vehicles";
 
 /**
@@ -19,6 +20,7 @@ export function DoneSheet({
   currentKm,
   intro,
   initialWhen = "today",
+  successText,
   onClose,
 }: {
   vehicleId: string;
@@ -29,11 +31,14 @@ export function DoneSheet({
   intro?: string;
   /** "other" to enter a service from the paper logbook or an invoice. */
   initialWhen?: "today" | "other";
+  /** What Robi says once it is saved (default: noted in the history). */
+  successText?: string;
   onClose: () => void;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const done = useMarkMaintenanceDone(vehicleId);
+  const robi = useRobi();
   const [when, setWhen] = useState<"today" | "other">(initialWhen);
   const [dayInput, setDayInput] = useState("");
   const [kmInput, setKmInput] = useState(initialWhen === "today" && currentKm !== null ? String(currentKm) : "");
@@ -62,6 +67,7 @@ export function DoneSheet({
       {
         onSuccess: () => {
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          robi.say(successText ?? `« ${itemName} » est noté dans l'historique. J'ai recalculé la prochaine échéance.`, { title: "Bravo !", mood: "celebrate" });
           onClose();
         },
       },
