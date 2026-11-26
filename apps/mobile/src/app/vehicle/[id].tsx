@@ -4,7 +4,7 @@ import { Alert, Linking, View } from "react-native";
 import { Car3D } from "@/components/Car3D";
 import { HistorySection } from "@/components/HistorySection";
 import { MaintenanceSection } from "@/components/MaintenanceSection";
-import { cleanHints, OwnerHintsFields } from "@/components/OwnerHintsFields";
+import { cleanHints, OwnerHintsFields, prefillHints } from "@/components/OwnerHintsFields";
 import { RequireAuth } from "@/components/RequireAuth";
 import { RobotGuide } from "@/components/Robot";
 import { Button, Card, Pill, Row, Screen, Segmented, SectionTitle, Skeleton, Steps, Txt } from "@/components/ui";
@@ -128,10 +128,12 @@ function Specs({ v }: { v: Vehicle }) {
   );
 }
 
-function Settings({ v, onDeleted }: { v: Vehicle; onDeleted: () => void }) {
+function Settings({ v, onDeleted, startOpen }: { v: Vehicle; onDeleted: () => void; startOpen: boolean }) {
   const research = useResearchAgain(v.id);
   const remove = useDeleteVehicle();
-  const [hints, setHints] = useState<OwnerHints>(v.declared ?? {});
+  // Opened by "Ce n'est pas ma voiture ?": filled in with what is already known.
+  const [editing, setEditing] = useState(startOpen);
+  const [hints, setHints] = useState<OwnerHints>(() => prefillHints(v));
 
   function confirmDelete() {
     Alert.alert("Supprimer cette voiture ?", "Elle sera retirée de votre compte, avec son suivi d'entretien.", [
@@ -150,18 +152,40 @@ function Settings({ v, onDeleted }: { v: Vehicle; onDeleted: () => void }) {
 
   return (
     <View style={{ gap: space.lg }}>
-      <SectionTitle>Ce n'est pas ma voiture ?</SectionTitle>
+      <SectionTitle>Identification</SectionTitle>
       <Card style={{ gap: space.lg }}>
-        <Txt tone="muted">Recopiez les informations de votre carte grise, puis relancez la recherche.</Txt>
-        <OwnerHintsFields value={hints} onChange={setHints} />
-        <Button
-          label="Relancer la recherche"
-          icon="refresh"
-          variant="secondary"
-          disabled={v.status === "PENDING"}
-          loading={research.isPending}
-          onPress={() => research.mutate(cleanHints(hints))}
-        />
+        {!editing ? (
+          <>
+            <Txt tone="muted">
+              {v.profile ? `Robi a identifié : ${vehicleTitle(v)}${v.profile.modelYear ? ` (${v.profile.modelYear})` : ""}.` : "Voiture pas encore identifiée."}{" "}
+              Si ce n'est pas votre voiture, corrigez les informations avec votre carte grise.
+            </Txt>
+            <Button
+              label="Ce n'est pas ma voiture ?"
+              icon="create-outline"
+              variant="secondary"
+              onPress={() => {
+                setHints(prefillHints(v));
+                setEditing(true);
+              }}
+            />
+          </>
+        ) : (
+          <>
+            <Txt tone="muted">
+              J'ai rempli ce que je sais déjà. Vérifiez avec votre carte grise et corrigez ce qui ne va pas, puis relancez la recherche.
+            </Txt>
+            <OwnerHintsFields value={hints} onChange={setHints} />
+            <Button
+              label="Relancer la recherche"
+              icon="refresh"
+              disabled={v.status === "PENDING" || !hints.make}
+              loading={research.isPending}
+              onPress={() => research.mutate(cleanHints(hints), { onSuccess: () => setEditing(false) })}
+            />
+            <Button label="Annuler" variant="ghost" size="md" onPress={() => setEditing(false)} />
+          </>
+        )}
         {research.error ? (
           <Txt tone="danger" accessibilityLiveRegion="polite">
             La recherche n'a pas pu être relancée : {research.error.message}
@@ -183,6 +207,7 @@ function Dashboard({ id }: { id: string }) {
   const { data: v, isLoading, error, refetch } = useVehicle(id);
   const maintenance = useMaintenance(id, v?.status === "READY");
   const [tab, setTab] = useState<Tab>("entretien");
+  const [fixRequested, setFixRequested] = useState(false);
 
   if (!v && error) {
     return (
@@ -231,7 +256,14 @@ function Dashboard({ id }: { id: string }) {
         ) : null}
       </View>
 
-      <Guide v={v} m={maintenance.data} onFix={() => setTab("reglages")} />
+      <Guide
+        v={v}
+        m={maintenance.data}
+        onFix={() => {
+          setFixRequested(true);
+          setTab("reglages");
+        }}
+      />
 
       <Segmented<Tab>
         value={tab}
@@ -268,7 +300,7 @@ function Dashboard({ id }: { id: string }) {
             <Txt tone="muted">La fiche technique apparaîtra à la fin de l'analyse.</Txt>
           </Card>
         ))}
-      {tab === "reglages" && <Settings v={v} onDeleted={() => router.back()} />}
+      {tab === "reglages" && <Settings v={v} startOpen={fixRequested || v.status === "FAILED"} onDeleted={() => router.back()} />}
       <View style={{ height: space.sm, backgroundColor: t.bg }} />
     </Screen>
   );

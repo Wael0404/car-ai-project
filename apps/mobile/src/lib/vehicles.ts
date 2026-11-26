@@ -124,6 +124,11 @@ function invalidateCar(qc: ReturnType<typeof useQueryClient>, id: string) {
   ]);
 }
 
+/** Makes and models for the drop-down lists (changes rarely). */
+export function useCarCatalog() {
+  return useQuery({ queryKey: ["catalog"], queryFn: api.getCatalog, staleTime: 60 * 60 * 1000, gcTime: 24 * 60 * 60 * 1000 });
+}
+
 /** Oil-change logbook; polls while the maintenance plan is still being built. */
 export function useOilLog(id: string) {
   return useQuery({

@@ -1,5 +1,5 @@
 import * as SecureStore from "expo-secure-store";
-import type { Garage, Maintenance, OilLog, OwnerHints, PartPrices, Report, Tokens, Vehicle, VehicleEvent } from "./types";
+import type { CatalogMake, Garage, Maintenance, OilLog, OwnerHints, PartPrices, Report, Tokens, Vehicle, VehicleEvent } from "./types";
 
 /** A service marked done: km and day it was done (default: now), price, note. */
 export interface DoneInput {
@@ -129,6 +129,7 @@ export const api = {
   getGarages: (lat: number, lon: number) =>
     request<{ garages: Garage[] }>(`/garages?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`),
   getOilLog: (id: string) => request<OilLog>(`/vehicles/${id}/oil-log`),
+  getCatalog: () => request<{ makes: CatalogMake[] }>("/catalog/makes"),
   markMaintenanceDone: (id: string, itemId: string, input: DoneInput) =>
     request<{ ok: true; recordId: string }>(`/vehicles/${id}/maintenance/${encodeURIComponent(itemId)}/done`, {
       method: "POST",

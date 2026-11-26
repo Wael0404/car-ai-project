@@ -72,6 +72,12 @@ export interface GalleryPhoto {
 }
 
 /** What the owner reads on the registration card (carte grise). */
+/** A make and its commercial types, for the drop-down lists. */
+export interface CatalogMake {
+  name: string;
+  models: string[];
+}
+
 export interface OwnerHints {
   make?: string | null; // Constructeur
   model?: string | null; // Type commercial
