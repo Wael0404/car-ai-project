@@ -18,52 +18,88 @@ interface Message {
   mood: RobotMood;
 }
 
-const RobiContext = createContext<{ say: (text: string, opts?: { title?: string; mood?: RobotMood }) => void }>({
-  say: () => {},
-});
+interface RobiApi {
+  say: (text: string, opts?: { title?: string; mood?: RobotMood }) => void;
+  /** Space a screen keeps free at the bottom (e.g. a floating button). */
+  setBottomInset: (px: number) => void;
+}
+
+const RobiContext = createContext<RobiApi>({ say: () => {}, setBottomInset: () => {} });
 
 /** robi.say("Vidange enregistrée", { mood: "celebrate" }) */
 export function useRobi() {
   return useContext(RobiContext);
 }
 
+/** While this screen is shown, Robi's messages stay above its bottom button. */
+export function useRobiBottomInset(px: number) {
+  const { setBottomInset } = useRobi();
+  useEffect(() => {
+    setBottomInset(px);
+    return () => setBottomInset(0);
+  }, [px, setBottomInset]);
+}
+
 export function RobiProvider({ children }: { children: ReactNode }) {
   const [message, setMessage] = useState<Message | null>(null);
+  const [bottomInset, setBottomInset] = useState(0);
   const next = useRef(1);
   const say = useCallback((text: string, opts?: { title?: string; mood?: RobotMood }) => {
     setMessage({ id: next.current++, text, title: opts?.title, mood: opts?.mood ?? "happy" });
     AccessibilityInfo.announceForAccessibility([opts?.title, text].filter(Boolean).join(". "));
   }, []);
-  const value = useMemo(() => ({ say }), [say]);
-  const clear = useCallback(() => setMessage(null), []);
+  // Only removes this message: a newer one that replaced it stays.
+  const clear = useCallback((id: number) => setMessage((m) => (m?.id === id ? null : m)), []);
+  const value = useMemo(() => ({ say, setBottomInset }), [say]);
   return (
     <RobiContext.Provider value={value}>
       {children}
-      {message ? <RobiBubble key={message.id} message={message} onDone={clear} /> : null}
+      {message ? <RobiBubble key={message.id} message={message} bottomInset={bottomInset} onDone={clear} /> : null}
     </RobiContext.Provider>
   );
 }
 
-function RobiBubble({ message, onDone }: { message: Message; onDone: () => void }) {
+function RobiBubble({ message, bottomInset, onDone }: { message: Message; bottomInset: number; onDone: (id: number) => void }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
   const [show] = useState(() => new Animated.Value(0));
 
+  // Leave, then remove this message (not a newer one that replaced it).
+  const leave = useCallback(
+    (duration: number) =>
+      Animated.timing(show, { toValue: 0, duration: reduceMotion ? 0 : duration, useNativeDriver: true }).start(({ finished }) => {
+        if (finished) onDone(message.id);
+      }),
+    [show, reduceMotion, onDone, message.id],
+  );
+
   useEffect(() => {
-    const visibleMs = Math.min(6500, 2600 + message.text.length * 35);
     const enter = reduceMotion
       ? Animated.timing(show, { toValue: 1, duration: 0, useNativeDriver: true })
       : Animated.spring(show, { toValue: 1, useNativeDriver: true, speed: 13, bounciness: 9 });
     enter.start();
-    const timer = setTimeout(() => {
-      Animated.timing(show, { toValue: 0, duration: reduceMotion ? 0 : 220, useNativeDriver: true }).start(() => onDone());
-    }, visibleMs);
-    return () => clearTimeout(timer);
-  }, [message, onDone, reduceMotion, show]);
+    // Longer for long messages, and as long as the owner's accessibility
+    // setting asks (Android "Time to take action").
+    const wanted = Math.min(6500, 2600 + message.text.length * 35);
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    AccessibilityInfo.getRecommendedTimeoutMillis(wanted)
+      .catch(() => wanted)
+      .then((ms) => {
+        if (alive) timer = setTimeout(() => leave(220), ms);
+      });
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [message, reduceMotion, show, leave]);
 
   return (
-    <View pointerEvents="box-none" style={{ position: "absolute", left: 0, right: 0, bottom: insets.bottom + space.lg, paddingHorizontal: space.lg }}>
+    <View
+      pointerEvents="box-none"
+      style={{ position: "absolute", left: 0, right: 0, bottom: insets.bottom + space.lg + bottomInset, paddingHorizontal: space.lg }}
+    >
       <Animated.View
         accessibilityLiveRegion="polite"
         style={{
@@ -77,7 +113,7 @@ function RobiBubble({ message, onDone }: { message: Message; onDone: () => void 
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`${[message.title, message.text].filter(Boolean).join(". ")}. Toucher pour fermer`}
-          onPress={() => Animated.timing(show, { toValue: 0, duration: 160, useNativeDriver: true }).start(() => onDone())}
+          onPress={() => leave(160)}
           style={{
             flexDirection: "row",
             alignItems: "center",

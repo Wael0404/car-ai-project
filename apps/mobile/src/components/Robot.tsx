@@ -1,5 +1,5 @@
 import * as Haptics from "expo-haptics";
-import { useEffect, useState, type ReactNode } from "react";
+import { memo, useEffect, useState, type ReactNode } from "react";
 import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, View } from "react-native";
 import Svg, { Circle, Ellipse, G, Path, Rect } from "react-native-svg";
 import { Button, Txt } from "@/components/ui";
@@ -33,7 +33,7 @@ const tween = (v: Animated.Value, toValue: number, duration: number, easing = Ea
  * pulsing), waves hello, jumps with joy, and moves its mouth while talking.
  * Still when the phone asks to reduce motion.
  */
-export function Robot({
+export const Robot = memo(function Robot({
   size = 72,
   mood = "happy",
   talking = false,
@@ -61,9 +61,10 @@ export function Robot({
   }));
 
   // Idle life: float + blink + antenna halo (faster while thinking).
+  // Restarts only when "thinking" changes, not on every mood.
+  const thinking = mood === "thinking";
   useEffect(() => {
     if (reduceMotion) return;
-    const thinking = mood === "thinking";
     const anims = [
       loop(Animated.sequence([tween(v.float, 1, thinking ? 900 : 1400), tween(v.float, 0, thinking ? 900 : 1400)])),
       loop(Animated.sequence([Animated.delay(2600), tween(v.blink, 0.1, 70, Easing.linear), tween(v.blink, 1, 90, Easing.linear)])),
@@ -76,8 +77,13 @@ export function Robot({
       ),
     ];
     anims.forEach((a) => a.start());
-    return () => anims.forEach((a) => a.stop());
-  }, [mood, reduceMotion, v]);
+    return () => {
+      anims.forEach((a) => a.stop());
+      // Never leave the eyes half-closed or the halo frozen.
+      v.blink.setValue(1);
+      v.halo.setValue(0);
+    };
+  }, [thinking, reduceMotion, v]);
 
   // Mood-specific moves.
   useEffect(() => {
@@ -92,7 +98,8 @@ export function Robot({
     } else if (mood === "wave") {
       anim = Animated.sequence([
         Animated.delay(200),
-        Animated.loop(Animated.sequence([tween(v.arm, 1, 220), tween(v.arm, 0.2, 220)]), { iterations: 3 }),
+        // No reset between strokes: the hand goes smoothly back and forth.
+        Animated.loop(Animated.sequence([tween(v.arm, 1, 220), tween(v.arm, 0.2, 220)]), { iterations: 3, resetBeforeIteration: false }),
         tween(v.arm, 0, 250),
       ]);
     } else if (mood === "celebrate") {
@@ -104,7 +111,10 @@ export function Robot({
           Animated.spring(v.jump, { toValue: 0, useNativeDriver: true, speed: 14, bounciness: 10 }),
         ]),
         Animated.sequence([Animated.timing(v.sparkle, { toValue: 1, duration: 900, easing: Easing.out(Easing.cubic), useNativeDriver: true })]),
-        Animated.loop(Animated.sequence([tween(v.arm, 1, 200), tween(v.arm, 0.4, 200)]), { iterations: 3 }),
+        Animated.sequence([
+          Animated.loop(Animated.sequence([tween(v.arm, 1, 200), tween(v.arm, 0.4, 200)]), { iterations: 3, resetBeforeIteration: false }),
+          tween(v.arm, 0, 250),
+        ]),
       ]);
       v.sparkle.setValue(0);
     } else if (mood === "alert") {
@@ -121,6 +131,7 @@ export function Robot({
       v.tilt.setValue(0);
       v.arm.setValue(0);
       v.jump.setValue(0);
+      v.sparkle.setValue(0);
     };
   }, [mood, reduceMotion, v]);
 
@@ -229,7 +240,7 @@ export function Robot({
         <Circle cx={87} cy={81} r={3.6} fill={body} />
       </Layer>
       {/* sparkles when celebrating */}
-      {mood === "celebrate"
+      {mood === "celebrate" && !reduceMotion
         ? [0, 1, 2, 3, 4, 5].map((i) => {
             const angle = (i / 6) * Math.PI * 2 - Math.PI / 2;
             const dist = 46 * u;
@@ -271,7 +282,7 @@ export function Robot({
       {robot}
     </Pressable>
   );
-}
+});
 
 /** Three dots bouncing: "Robi is writing…". */
 function TypingDots() {
@@ -398,17 +409,22 @@ export function RobotGuide({
         <View style={[styles.tail, { backgroundColor: t.card, borderColor: t.border }]} />
         {title ? <Txt variant="bodyStrong">{title}</Txt> : null}
         {text !== null ? (
-          waiting ? (
-            <TypingDots />
-          ) : (
+          // The full text is always laid out (the part not yet "written" is
+          // invisible), so the bubble has its final height from the start and
+          // nothing below it moves. The typing dots sit on top meanwhile.
+          <View>
             <Txt variant={compact ? "caption" : "body"} tone="muted" accessibilityLabel={text}>
               {text.slice(0, shown)}
-              {/* keep the bubble's final height while typing: the rest is invisible */}
               <Txt variant={compact ? "caption" : "body"} style={{ color: "transparent" }}>
                 {text.slice(shown)}
               </Txt>
             </Txt>
-          )
+            {waiting ? (
+              <View style={{ position: "absolute", left: 0, top: 0 }} pointerEvents="none">
+                <TypingDots />
+              </View>
+            ) : null}
+          </View>
         ) : (
           children
         )}

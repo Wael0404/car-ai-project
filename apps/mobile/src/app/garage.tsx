@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Animated, Easing, FlatList, Image, Pressable, RefreshControl, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { RequireAuth } from "@/components/RequireAuth";
-import { useRobi } from "@/components/RobiToast";
+import { useRobi, useRobiBottomInset } from "@/components/RobiToast";
 import { Robot, RobotGuide } from "@/components/Robot";
 import { Appear, Button, Card, IconButton, Pill, Skeleton, Txt } from "@/components/ui";
 import { useReduceMotion } from "@/lib/motion";
@@ -132,6 +132,8 @@ function GarageList() {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const robi = useRobi();
+  // Robi's messages stay above the "Ajouter une voiture" button.
+  useRobiBottomInset(54 + space.md);
   const [tip, setTip] = useState(0);
   const { data, isLoading, isRefetching, refetch, error } = useVehicles();
   const cars = data ?? [];
