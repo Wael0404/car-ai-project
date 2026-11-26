@@ -3,17 +3,18 @@ import { useState } from "react";
 import { Alert, Linking, View } from "react-native";
 import { Car3D } from "@/components/Car3D";
 import { HistorySection } from "@/components/HistorySection";
+import { OilLogCard } from "@/components/OilLogCard";
 import { MaintenanceSection } from "@/components/MaintenanceSection";
 import { cleanHints, OwnerHintsFields, prefillHints } from "@/components/OwnerHintsFields";
 import { RequireAuth } from "@/components/RequireAuth";
 import { RobotGuide } from "@/components/Robot";
-import { Button, Card, Pill, Row, Screen, Segmented, SectionTitle, Skeleton, Steps, Txt } from "@/components/ui";
+import { Button, Card, Pill, Row, Screen, ScrollTabs, SectionTitle, Skeleton, Steps, Txt } from "@/components/ui";
 import { vehicleTitle } from "@/lib/format";
 import { space, useTheme } from "@/lib/theme";
 import type { Maintenance, OwnerHints, Vehicle } from "@/lib/types";
 import { useDeleteVehicle, useMaintenance, useResearchAgain, useVehicle } from "@/lib/vehicles";
 
-type Tab = "entretien" | "historique" | "fiche" | "reglages";
+type Tab = "entretien" | "carnet" | "historique" | "fiche" | "reglages";
 const CONFIDENCE = { high: "élevée", medium: "moyenne", low: "faible" } as const;
 
 /** What Robi says on this car, depending on where the analysis stands. */
@@ -265,14 +266,15 @@ function Dashboard({ id }: { id: string }) {
         }}
       />
 
-      <Segmented<Tab>
+      <ScrollTabs<Tab>
         value={tab}
         onChange={setTab}
         options={[
-          { value: "entretien", label: "Entretien" },
-          { value: "historique", label: "Historique" },
-          { value: "fiche", label: "Fiche" },
-          { value: "reglages", label: "Réglages" },
+          { value: "entretien", label: "Entretien", icon: "construct-outline" },
+          { value: "carnet", label: "Carnet de vidange", icon: "water-outline" },
+          { value: "historique", label: "Historique", icon: "time-outline" },
+          { value: "fiche", label: "Fiche", icon: "document-text-outline" },
+          { value: "reglages", label: "Réglages", icon: "options-outline" },
         ]}
       />
 
@@ -291,6 +293,14 @@ function Dashboard({ id }: { id: string }) {
             <Txt tone="muted">Le plan d'entretien apparaîtra dès que j'aurai identifié votre voiture.</Txt>
           </Card>
         ))}
+      {tab === "carnet" && (
+        <View style={{ gap: space.lg }}>
+          <RobotGuide mood="happy" compact>
+            Chaque vidange avec sa date et son kilométrage, et ce qu'il reste avant la prochaine.
+          </RobotGuide>
+          <OilLogCard vehicleId={v.id} mileageKm={v.mileageKm} />
+        </View>
+      )}
       {tab === "historique" && <HistorySection vehicleId={v.id} mileageKm={v.mileageKm} />}
       {tab === "fiche" &&
         (v.status === "READY" && p ? (

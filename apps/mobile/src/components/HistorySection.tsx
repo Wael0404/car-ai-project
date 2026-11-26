@@ -3,13 +3,12 @@ import { useState } from "react";
 import { Alert, Pressable, View } from "react-native";
 import { BarChart, LineChart, RankBars } from "@/components/charts";
 import { CATEGORY_ICON, CATEGORY_LABEL } from "@/components/MaintenanceSection";
-import { OilLogCard } from "@/components/OilLogCard";
 import { RobotGuide } from "@/components/Robot";
 import { Card, SectionTitle, Skeleton, Txt, type IconName } from "@/components/ui";
 import { dateFr, dateLongFr, km, MONTHS_FR, tnd } from "@/lib/format";
 import { font, radius, space, useTheme, PAINT_COLORS } from "@/lib/theme";
 import type { Report, VehicleEvent } from "@/lib/types";
-import { useHistory, useOilLog, useReport, useUndoMaintenance } from "@/lib/vehicles";
+import { useHistory, useReport, useUndoMaintenance } from "@/lib/vehicles";
 
 /**
  * Everything done on the car, in the order an owner looks for it:
@@ -103,8 +102,8 @@ function Services({ vehicleId, records }: { vehicleId: string; records: Report["
     return (
       <Card>
         <Txt tone="muted">
-          Aucun autre entretien enregistré. Quand un entretien est fait (filtres, freins, courroie…), touchez « C'est fait »
-          dans l'onglet Entretien : il apparaîtra ici avec sa date et son kilométrage.
+          Aucun entretien enregistré. Quand un entretien est fait, touchez « C'est fait » dans l'onglet Entretien : il
+          apparaîtra ici avec sa date et son kilométrage.
         </Txt>
       </Card>
     );
@@ -398,19 +397,15 @@ function ChangeLog({ events }: { events: VehicleEvent[] }) {
 export function HistorySection({ vehicleId, mileageKm }: { vehicleId: string; mileageKm: number | null }) {
   const report = useReport(vehicleId);
   const history = useHistory(vehicleId);
-  // Oil changes are in the carnet: not listed a second time below.
-  const oilLog = useOilLog(vehicleId);
-  const oilItemId = oilLog.data?.item?.id;
 
   return (
     <View style={{ gap: space.lg }}>
       <RobotGuide mood="happy" compact>
-        Ici, tout ce qui a été fait sur votre voiture : vidanges, entretiens et dépenses.
+        Ici, tout ce qui a été fait sur votre voiture : entretiens, dépenses et kilométrage. Le suivi des vidanges est dans
+        l'onglet Carnet de vidange.
       </RobotGuide>
 
-      <OilLogCard vehicleId={vehicleId} mileageKm={mileageKm} />
-
-      {report.isLoading || history.isLoading || oilLog.isLoading ? (
+      {report.isLoading || history.isLoading ? (
         <View style={{ gap: space.md }}>
           <Skeleton height={120} />
           <Skeleton height={160} />
@@ -438,8 +433,8 @@ export function HistorySection({ vehicleId, mileageKm }: { vehicleId: string; mi
             </>
           ) : null}
 
-          <SectionTitle>Autres entretiens</SectionTitle>
-          <Services vehicleId={vehicleId} records={report.data.records.filter((r) => r.itemId !== oilItemId)} />
+          <SectionTitle>Tous les entretiens</SectionTitle>
+          <Services vehicleId={vehicleId} records={report.data.records} />
 
           {report.data.spendByMonth.some((m) => m.totalTnd > 0) ? (
             <>

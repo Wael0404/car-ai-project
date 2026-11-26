@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -14,6 +14,7 @@ import {
   type TextInputProps,
   type TextProps,
   type TextStyle,
+  type ScrollViewInstance,
   type ViewStyle,
 } from "react-native";
 import { useReduceMotion } from "@/lib/motion";
@@ -306,6 +307,73 @@ export function Segmented<T extends string>({
         );
       })}
     </View>
+  );
+}
+
+/**
+ * Tabs that scroll sideways, for 5 tabs or more: every label stays readable,
+ * the next tab peeks out at the edge, and the active one is kept in view.
+ */
+export function ScrollTabs<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: Array<{ value: T; label: string; icon?: IconName }>;
+  onChange: (v: T) => void;
+}) {
+  const t = useTheme();
+  const scroller = useRef<ScrollViewInstance>(null);
+  const positions = useRef(new Map<T, { x: number; width: number }>());
+  const [viewWidth, setViewWidth] = useState(0);
+
+  // Bring the active tab into view (also when it was chosen by code, e.g. Robi's button).
+  useEffect(() => {
+    const p = positions.current.get(value);
+    if (p && viewWidth > 0) scroller.current?.scrollTo({ x: Math.max(0, p.x - (viewWidth - p.width) / 2), animated: true });
+  }, [value, viewWidth]);
+
+  return (
+    <ScrollView
+      ref={scroller}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      onLayout={(e) => setViewWidth(e.nativeEvent.layout.width)}
+      accessibilityRole="tablist"
+      style={{ marginHorizontal: -space.lg, flexGrow: 0 }}
+      contentContainerStyle={{ paddingHorizontal: space.lg, gap: space.sm }}
+    >
+      {options.map((o) => {
+        const active = o.value === value;
+        return (
+          <Pressable
+            key={o.value}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+            onLayout={(e) => positions.current.set(o.value, { x: e.nativeEvent.layout.x, width: e.nativeEvent.layout.width })}
+            onPress={() => {
+              void Haptics.selectionAsync().catch(() => {});
+              onChange(o.value);
+            }}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              minHeight: 44,
+              paddingHorizontal: space.lg,
+              borderRadius: radius.pill,
+              backgroundColor: active ? t.primary : pressed ? t.border : t.surface2,
+            })}
+          >
+            {o.icon ? <Ionicons name={o.icon} size={17} color={active ? t.primaryText : t.muted} /> : null}
+            <Text style={[type.caption, { color: active ? t.primaryText : t.text, fontFamily: type.bodyStrong.fontFamily, fontSize: 14 }]}>
+              {o.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
   );
 }
 
