@@ -78,14 +78,27 @@ export function useTheme(): Theme {
   return useColorMode() === "dark" ? dark : light;
 }
 
-/** Inter, loaded in the root layout. */
-export const font = {
+/**
+ * Fonts, loaded in the root layout: Inter for French, Cairo for Arabic
+ * (Inter has no Arabic letters). Switched by applyFonts() when the language
+ * changes; the app is then remounted so every style picks them up.
+ */
+const INTER = {
   regular: "Inter_400Regular",
   medium: "Inter_500Medium",
   semibold: "Inter_600SemiBold",
   bold: "Inter_700Bold",
   extrabold: "Inter_800ExtraBold",
-} as const;
+};
+const CAIRO = {
+  regular: "Cairo_400Regular",
+  medium: "Cairo_500Medium",
+  semibold: "Cairo_600SemiBold",
+  bold: "Cairo_700Bold",
+  extrabold: "Cairo_800ExtraBold",
+};
+
+export const font = { ...INTER };
 
 /** Type scale: [fontSize, lineHeight, font]. */
 export const type = {
@@ -95,9 +108,27 @@ export const type = {
   body: { fontSize: 15, lineHeight: 22, fontFamily: font.regular },
   bodyStrong: { fontSize: 15, lineHeight: 22, fontFamily: font.semibold },
   caption: { fontSize: 13, lineHeight: 18, fontFamily: font.regular },
-  label: { fontSize: 12, lineHeight: 16, fontFamily: font.semibold, letterSpacing: 0.6, textTransform: "uppercase" as const },
+  label: { fontSize: 12, lineHeight: 16, fontFamily: font.semibold, letterSpacing: 0.6, textTransform: "uppercase" as "uppercase" | "none" },
   micro: { fontSize: 11, lineHeight: 15, fontFamily: font.regular },
 };
+
+/**
+ * Arabic: Cairo, a bit more line height (taller letters), and no letter
+ * spacing (it breaks the joining between Arabic letters) nor capitals.
+ */
+export function applyFonts(lang: "fr" | "ar") {
+  const ar = lang === "ar";
+  Object.assign(font, ar ? CAIRO : INTER);
+  const lh = (n: number) => (ar ? Math.round(n * 1.25) : n);
+  Object.assign(type.display, { fontFamily: font.extrabold, letterSpacing: ar ? 0 : -0.6, lineHeight: lh(36) });
+  Object.assign(type.title, { fontFamily: font.bold, letterSpacing: ar ? 0 : -0.3, lineHeight: lh(28) });
+  Object.assign(type.heading, { fontFamily: font.semibold, lineHeight: lh(22) });
+  Object.assign(type.body, { fontFamily: font.regular, lineHeight: lh(22) });
+  Object.assign(type.bodyStrong, { fontFamily: font.semibold, lineHeight: lh(22) });
+  Object.assign(type.caption, { fontFamily: font.regular, lineHeight: lh(18) });
+  Object.assign(type.label, { fontFamily: font.semibold, letterSpacing: ar ? 0 : 0.6, textTransform: ar ? "none" : "uppercase", lineHeight: lh(16) });
+  Object.assign(type.micro, { fontFamily: font.regular, lineHeight: lh(15) });
+}
 
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 export const radius = { sm: 10, md: 14, lg: 20, pill: 999 } as const;
