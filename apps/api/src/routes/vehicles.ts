@@ -320,8 +320,10 @@ export async function vehicleRoutes(app: FastifyInstance) {
     const key = profile ? maintenanceKey(profile) : null;
     const plan = key ? await prisma.maintenancePlan.findUnique({ where: { key } }) : null;
     if (!plan || plan.status !== "READY" || !Array.isArray(plan.items)) {
+      // FAILED stops the app from polling (car not identified, or no plan).
+      const failed = vehicle.spec.status === "FAILED" || plan?.status === "FAILED";
       return {
-        status: plan?.status === "FAILED" ? "FAILED" : "PENDING",
+        status: failed ? "FAILED" : "PENDING",
         item: null,
         mileageKm: vehicle.mileageKm,
         next: null,
@@ -418,8 +420,9 @@ export async function vehicleRoutes(app: FastifyInstance) {
       costTnd: costTnd ?? null,
       date: date ?? null,
     });
-    // Doing a service at a higher km also tells us the current mileage.
-    if (vehicle.mileageKm === null || doneAtKm > vehicle.mileageKm) {
+    // A service done today at a higher km also tells us the current mileage.
+    // Not one entered afterwards: its km is an old reading, not today's odometer.
+    if (!date && (vehicle.mileageKm === null || doneAtKm > vehicle.mileageKm)) {
       await prisma.vehicle.update({ where: { id }, data: { mileageKm: doneAtKm, mileageUpdatedAt: new Date() } });
       await logEvent(id, "mileage_updated", { fromKm: vehicle.mileageKm, toKm: doneAtKm });
     }

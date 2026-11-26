@@ -399,7 +399,8 @@ export function HistorySection({ vehicleId, mileageKm }: { vehicleId: string; mi
   const report = useReport(vehicleId);
   const history = useHistory(vehicleId);
   // Oil changes are in the carnet: not listed a second time below.
-  const oilItemId = useOilLog(vehicleId).data?.item?.id;
+  const oilLog = useOilLog(vehicleId);
+  const oilItemId = oilLog.data?.item?.id;
 
   return (
     <View style={{ gap: space.lg }}>
@@ -409,7 +410,7 @@ export function HistorySection({ vehicleId, mileageKm }: { vehicleId: string; mi
 
       <OilLogCard vehicleId={vehicleId} mileageKm={mileageKm} />
 
-      {report.isLoading || history.isLoading ? (
+      {report.isLoading || history.isLoading || oilLog.isLoading ? (
         <View style={{ gap: space.md }}>
           <Skeleton height={120} />
           <Skeleton height={160} />

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, type DoneInput } from "./api";
-import type { Maintenance, OwnerHints, PartPrices, Vehicle } from "./types";
+import type { Maintenance, OilLog, OwnerHints, PartPrices, Vehicle } from "./types";
 
 const POLL_MS = 4000;
 
@@ -124,8 +124,13 @@ function invalidateCar(qc: ReturnType<typeof useQueryClient>, id: string) {
   ]);
 }
 
+/** Oil-change logbook; polls while the maintenance plan is still being built. */
 export function useOilLog(id: string) {
-  return useQuery({ queryKey: ["oil-log", id], queryFn: () => api.getOilLog(id) });
+  return useQuery({
+    queryKey: ["oil-log", id],
+    queryFn: () => api.getOilLog(id),
+    refetchInterval: (q) => ((q.state.data as OilLog | undefined)?.status === "PENDING" ? POLL_MS : false),
+  });
 }
 
 export function useHistory(id: string) {

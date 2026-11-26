@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PlanItem } from "./maintenance.js";
+import { computeDue, type PlanItem } from "./maintenance.js";
 import { buildOilLog, findOilItem, type OilRecord } from "./oilLog.js";
 
 const plan: PlanItem[] = [
@@ -65,6 +65,15 @@ describe("buildOilLog", () => {
     const log = buildOilLog(plan, [], 59200, null, NOW);
     expect(log.entries).toEqual([]);
     expect(log.next).toMatchObject({ estimated: true, nextDueKm: 60000, used: null });
+  });
+
+  it("takes the most recent oil change when two have the same km, whatever their order", () => {
+    const older = rec("a", "vidange-huile", 60000, "2025-10-01");
+    const newer = rec("b", "vidange-huile", 60000, "2026-11-20");
+    const due = computeDue([plan[1]!], 61000, [older, newer], null, NOW)[0]!;
+    expect(due.lastDoneAt).toBe("2026-11-20");
+    expect(computeDue([plan[1]!], 61000, [newer, older], null, NOW)[0]!.lastDoneAt).toBe("2026-11-20");
+    expect(buildOilLog(plan, [older, newer], 61000, null, NOW).next?.nextDueDate).toBe("2027-11-20");
   });
 
   it("works without mileage and without an oil item", () => {

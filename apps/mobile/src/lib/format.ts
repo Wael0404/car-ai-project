@@ -61,8 +61,13 @@ export function parseDayFr(input: string, now: Date = new Date()): string | null
   return "day" in r ? r.day : null;
 }
 
-/** Digits typed -> "JJ/MM/AAAA" as the owner types. */
+/**
+ * Digits typed -> "JJ/MM/AAAA" as the owner types. Once the slashes are
+ * there, the owner's segments are kept, so fixing one digit in the middle
+ * does not shift the rest of the date.
+ */
 export const maskDayFr = (raw: string) => {
+  if (raw.includes("/")) return raw.replace(/[^\d/]/g, "").slice(0, 10);
   const digits = raw.replace(/\D/g, "").slice(0, 8);
   return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter(Boolean).join("/");
 };

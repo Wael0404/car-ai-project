@@ -50,10 +50,10 @@ export function DoneSheet({
   const ready = kmValid && costValid && (when === "today" || day !== null);
 
   function chooseWhen(v: "today" | "other") {
+    if (v === when) return;
     setWhen(v);
-    // Today's odometer is wrong for an older service: ask for that day's km.
-    if (v === "other" && kmInput === String(currentKm ?? "")) setKmInput("");
-    if (v === "today" && kmInput === "" && currentKm !== null) setKmInput(String(currentKm));
+    // Each mode has its own km: today's odometer, or the km of that past day.
+    setKmInput(v === "today" && currentKm !== null ? String(currentKm) : "");
   }
 
   function save() {

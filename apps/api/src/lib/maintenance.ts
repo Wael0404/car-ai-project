@@ -67,7 +67,10 @@ export function computeDue(
   const lastById = new Map<string, DoneRecord>();
   for (const r of records) {
     const prev = lastById.get(r.itemId);
-    if (!prev || r.doneAtKm > prev.doneAtKm) lastById.set(r.itemId, r);
+    // Highest km wins; same km: the most recent (records come in any order).
+    if (!prev || r.doneAtKm > prev.doneAtKm || (r.doneAtKm === prev.doneAtKm && r.doneAt > prev.doneAt)) {
+      lastById.set(r.itemId, r);
+    }
   }
 
   const result = items.map((item): DueItem => {
